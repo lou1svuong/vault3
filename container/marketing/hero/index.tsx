@@ -1,11 +1,17 @@
+"use client";
+
 import Header from "@/components/layouts/header";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/config/site.config";
 import { ArrowRight, Shield, Lock, Key } from "lucide-react";
 import Link from "next/link";
 import Spline from "@splinetool/react-spline";
+import { ConnectButton } from "@/components/custom-connect-wallet/connect-button";
+import { useWallet } from "@suiet/wallet-kit";
 
 export default function Hero() {
+  const { connected } = useWallet();
+
   return (
     <section className="w-full flex divide-x">
       <div className="flex-1 flex flex-col relative">
@@ -42,12 +48,15 @@ export default function Hero() {
             {siteConfig.description}
           </p>
           <div id="cta" className="flex items-center gap-4 pt-4">
-            <Button asChild>
-              <Link href="/connect" className="gap-2 group">
-                <span>Connect Wallet</span>
-                <ArrowRight className="size-4 group-hover:translate-x-1 transition-all duration-150" />
-              </Link>
-            </Button>
+            {!connected ? (
+              <ConnectButton className="bg-primary text-primary-foreground " />
+            ) : (
+              <Button asChild>
+                <Link href="/vault" className="gap-2">
+                  <span>Access Your Vault</span>
+                </Link>
+              </Button>
+            )}
             <Button variant="outline" asChild>
               <Link href="/docs" className="gap-2">
                 <span>Learn More</span>
