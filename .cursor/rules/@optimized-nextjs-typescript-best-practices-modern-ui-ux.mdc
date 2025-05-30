@@ -1,0 +1,106 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+# Optimized Next.js TypeScript Best Practices with Modern UI/UX
+
+## Code Style and Structure
+- Use functional components with TypeScript
+- Keep components simple and focused on a single responsibility
+- Use descriptive variable names (e.g., `isLoading`, `hasError`)
+- Structure files with clear component organization
+- Use lowercase with dashes for directory names (e.g., `components/auth-wizard`)
+
+## UI and Styling
+- Use Tailwind CSS for styling with consistent patterns:
+  - Use dashed borders (`border-dashed`) for cards and containers
+  - Maintain consistent spacing with `gap-4` and `p-4`
+  - Use `max-w-4xl` for content width constraints
+  - Implement responsive design with mobile-first approach
+- Follow terminal-like UI patterns for certain components:
+  - Use monospace fonts for code-like elements
+  - Include terminal-style headers with icons
+  - Use `$` prefix for command-like text
+- Use Shadcn UI components for consistent design:
+  - Card components with proper header, content, and footer sections
+  - Button components with appropriate variants
+  - Toast notifications for user feedback
+
+## State Management
+- Use React hooks for local state management
+- Keep state as close as possible to where it's used
+- Use proper loading and error states
+- Implement proper error handling with user feedback
+
+## Error Handling
+- Use early returns for error conditions
+- Implement proper error messages with toast notifications
+- Handle edge cases gracefully
+- Provide clear user feedback for errors
+
+## Performance
+- Use `'use client'` directive only when necessary
+- Implement proper loading states
+- Optimize component re-renders
+- Use proper TypeScript types for better development experience
+
+## File Structure
+```
+app/
+  ├── (onboarding)/
+  │   └── faucet/
+  │       └── page.tsx
+  ├── components/
+  │   ├── ui/
+  │   │   ├── button.tsx
+  │   │   ├── card.tsx
+  │   │   └── ...
+  │   └── custom-connect-wallet/
+  │       ├── connect-button.tsx
+  │       └── ...
+  └── ...
+```
+
+## Component Structure
+```typescript
+"use client";
+
+import { useState } from "react";
+import { Component } from "@/components/ui/component";
+import { toast } from "sonner";
+
+export default function PageComponent() {
+  const [state, setState] = useState();
+
+  const handleAction = async () => {
+    try {
+      // Action logic
+      toast.success("Success message");
+    } catch (error) {
+      console.error("Error:", error);
+      toast.error("Error message");
+    }
+  };
+
+  return (
+    <div className="w-full flex flex-col items-center justify-center py-8">
+      <div className="w-full max-w-4xl mx-auto border border-dashed rounded-none bg-background p-8 flex flex-col gap-6">
+        {/* Component content */}
+      </div>
+    </div>
+  );
+}
+```
+
+## Best Practices
+1. Keep components focused and maintainable
+2. Use consistent styling patterns
+3. Implement proper error handling
+4. Provide clear user feedback
+5. Follow the established UI patterns
+6. Use TypeScript for better type safety
+7. Keep the code clean and readable
+8. Use proper state management
+9. Implement responsive design
+10. Follow the terminal-like UI pattern where appropriate
