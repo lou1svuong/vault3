@@ -1,35 +1,61 @@
-import { Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardHeader } from "@/components/ui/card";
+import { ChevronLeft, Plus, Terminal } from "lucide-react";
+
+interface VaultWithMembers {
+  id: string;
+  name: string;
+  isOwner: boolean;
+  members: string[];
+}
 
 interface VaultHeaderProps {
   onSignOut: () => void;
   onAddNew: () => void;
+  vaults: VaultWithMembers[];
+  selectedVaultId: string | null;
+  onVaultSelect: (vaultId: string) => void;
+  showBackButton?: boolean;
+  onBack?: () => void;
 }
 
-export function VaultHeader({ onSignOut, onAddNew }: VaultHeaderProps) {
+export function VaultHeader({
+  onSignOut,
+  onAddNew,
+  selectedVaultId,
+  onVaultSelect,
+  showBackButton,
+  onBack,
+}: VaultHeaderProps) {
   return (
-    <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
-      <CardHeader className="border-b border-dashed flex items-center">
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center space-x-2">
-            <Terminal className="h-5 w-5" />
-            <span className="text-sm font-mono">vault.sh</span>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Button
-              onClick={onSignOut}
-              variant="outline"
-              className="rounded-none border-dashed"
-            >
-              Sign Out
-            </Button>
-            <Button onClick={onAddNew} className="rounded-none border-dashed">
-              Add New Password
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-    </Card>
+    <div className="flex items-center justify-between">
+      <div className="flex items-center space-x-4">
+        {showBackButton && onBack && (
+          <Button
+            onClick={onBack}
+            variant="outline"
+            className="rounded-none flex items-center space-x-2 shadow-none"
+          >
+            <span className="text-sm font-mono">$ cd vault.sh</span>
+          </Button>
+        )}
+      </div>
+      <div className="flex items-center space-x-2">
+        <Button
+          onClick={onAddNew}
+          variant="outline"
+          className="rounded-none border-dashed"
+        >
+          <Plus className="h-4 w-4 mr-2" />
+          Add New
+        </Button>
+        <Button
+          onClick={onSignOut}
+          variant="outline"
+          className="rounded-none border-dashed"
+        >
+          Sign Out
+        </Button>
+      </div>
+    </div>
   );
 }
