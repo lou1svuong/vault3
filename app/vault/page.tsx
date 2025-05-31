@@ -149,6 +149,7 @@ export default function VaultPage() {
       addLog("Signing out...");
       tusky.signOut();
       setTusky(null);
+      setLogs([]);
       addLog("Successfully signed out");
     }
   };
