@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Tusky } from "@tusky-io/ts-sdk/web";
+import { Tusky, Vault } from "@tusky-io/ts-sdk/web";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Loader2, Terminal } from "lucide-react";
@@ -17,6 +17,9 @@ import { VaultHeader } from "@/components/vault/vault-header";
 import { PasswordForm } from "@/components/vault/password-form";
 import { VaultLogger } from "@/components/vault/vault-logger";
 import { PasswordDialog } from "@/components/vault/password-dialog";
+import { VaultDialog } from "@/components/vault/vault-dialog";
+import { useSearchParams, useRouter } from "next/navigation";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface PasswordEntry {
   id: string;
@@ -25,6 +28,13 @@ interface PasswordEntry {
   password: string;
   url?: string;
   notes?: string;
+}
+
+interface VaultWithMembers {
+  id: string;
+  name: string;
+  isOwner: boolean;
+  members: string[];
 }
 
 function getDomain(url?: string) {
@@ -38,6 +48,8 @@ function getDomain(url?: string) {
 }
 
 export default function VaultPage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [tusky, setTusky] = useState<Tusky | null>(null);
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -57,10 +69,47 @@ export default function VaultPage() {
   );
   const [trashFiles, setTrashFiles] = useState<any[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const [vaults, setVaults] = useState<VaultWithMembers[]>([]);
+  const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null);
+  const [isLoadingVault, setIsLoadingVault] = useState(false);
+  const [showVaultDialog, setShowVaultDialog] = useState(false);
 
   const { mutate: signPersonalMessage } = useSignPersonalMessage();
   const account = useCurrentAccount();
   const wallet = useCurrentWallet();
+
+  // Load initial vault from URL
+  useEffect(() => {
+    const vaultId = searchParams.get("vault");
+    if (vaultId && tusky) {
+      setSelectedVaultId(vaultId);
+      loadPasswords(tusky, vaultId);
+    }
+  }, [searchParams, tusky]);
+
+  const updateVaultUrl = (vaultId: string | null) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (vaultId) {
+      params.set("vault", vaultId);
+    } else {
+      params.delete("vault");
+    }
+    router.push(`/vault?${params.toString()}`);
+  };
+
+  const handleVaultSelect = async (vaultId: string) => {
+    setSelectedVaultId(vaultId);
+    updateVaultUrl(vaultId);
+    if (tusky) {
+      setIsLoadingVault(true);
+      setPasswords([]); // Clear passwords when switching vaults
+      try {
+        await loadPasswords(tusky, vaultId);
+      } finally {
+        setIsLoadingVault(false);
+      }
+    }
+  };
 
   const scrollToBottom = () => {
     logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -131,8 +180,7 @@ export default function VaultPage() {
       await currentTuskyInstance.addEncrypter({ keystore: true });
 
       setTusky(currentTuskyInstance);
-      await loadPasswords(currentTuskyInstance);
-      await loadTrashFiles(currentTuskyInstance);
+      await loadVaults(currentTuskyInstance);
     } catch (err) {
       console.error("Encryption error:", err);
       setError(
@@ -168,29 +216,62 @@ export default function VaultPage() {
     });
   };
 
-  // Load passwords from vault
-  const loadPasswords = async (tuskyInstance: Tusky) => {
+  const loadVaults = async (tuskyInstance: Tusky) => {
     try {
-      addLog("Loading passwords from vault...");
+      addLog("Loading vaults...");
       const vaults = await tuskyInstance.vault.listAll();
-      const passwordVault = vaults.find((v) => v.name === "Password Vault");
+      addLog(`Found ${vaults.length} vaults`);
 
-      if (!passwordVault) {
-        addLog("Password vault not found, creating new one...");
-        const { id } = await tuskyInstance.vault.create("Password Vault", {
-          encrypted: true,
-        });
-        setPasswords([]);
-        return;
+      const vaultList = await Promise.all(
+        vaults.map(async (vault) => {
+          if (!vault || !vault.id) {
+            addLog("Invalid vault object: missing ID");
+            return null;
+          }
+
+          try {
+            const members = await tuskyInstance.vault.members(vault.id);
+            return {
+              id: vault.id,
+              name: vault.name || "Unnamed Vault",
+              isOwner: vault.owner === tuskyInstance.auth.getAddress(),
+              members: members.map((m) => m.address),
+            };
+          } catch (err) {
+            addLog(
+              `Error loading members for vault ${vault.id}: ${
+                err instanceof Error ? err.message : "Unknown error"
+              }`
+            );
+            return null;
+          }
+        })
+      );
+
+      const validVaults = vaultList.filter(
+        (vault): vault is VaultWithMembers => vault !== null
+      );
+      setVaults(validVaults);
+      addLog(`Successfully loaded ${validVaults.length} valid vaults`);
+
+      // If there's a selected vault in URL, load its passwords
+      const vaultId = searchParams.get("vault");
+      if (vaultId && validVaults.some((v) => v.id === vaultId)) {
+        setSelectedVaultId(vaultId);
+        await loadPasswords(tuskyInstance, vaultId);
       }
+    } catch (err) {
+      console.error("Load vaults error:", err);
+      setError(err instanceof Error ? err.message : "Failed to load vaults");
+    }
+  };
 
-      addLog(`Found password vault: ${passwordVault.id}`);
-      const files = await tuskyInstance.file.listAll({
-        vaultId: passwordVault.id,
-      });
+  const loadPasswords = async (tuskyInstance: Tusky, vaultId: string) => {
+    try {
+      addLog(`Loading passwords from vault ${vaultId}...`);
+      const files = await tuskyInstance.file.listAll({ vaultId });
       addLog(`Found ${files.length} files in vault`);
 
-      // Filter out files that are in trash
       const activeFiles = files.filter((file) => !file.isTrashed);
       addLog(`Found ${activeFiles.length} active files (not in trash)`);
 
@@ -217,38 +298,6 @@ export default function VaultPage() {
     } catch (err) {
       console.error("Load passwords error:", err);
       setError(err instanceof Error ? err.message : "Failed to load passwords");
-    }
-  };
-
-  const loadTrashFiles = async (tuskyInstance: Tusky) => {
-    try {
-      addLog("Loading trash files...");
-      const vaults = await tuskyInstance.vault.listAll();
-      const passwordVault = vaults.find((v) => v.name === "Password Vault");
-
-      if (!passwordVault) {
-        addLog("Password vault not found");
-        return;
-      }
-
-      const files = await tuskyInstance.file.listAll({
-        vaultId: passwordVault.id,
-      });
-
-      // Filter only trashed files
-      const trashedFiles = files.filter((file) => file.isTrashed);
-      addLog(`Found ${trashedFiles.length} files in trash`);
-      addLog(
-        "Trash files:",
-        JSON.stringify(trashedFiles.map((f) => ({ id: f.id, name: f.name })))
-      );
-
-      setTrashFiles(trashedFiles);
-    } catch (err) {
-      console.error("Load trash error:", err);
-      setError(
-        err instanceof Error ? err.message : "Failed to load trash files"
-      );
     }
   };
 
@@ -324,7 +373,7 @@ export default function VaultPage() {
       setShowAddForm(false);
       setNewPassword({});
       setEditingPassword(null);
-      await loadPasswords(tusky);
+      await loadPasswords(tusky, selectedVaultId || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save password");
     } finally {
@@ -438,10 +487,33 @@ export default function VaultPage() {
     }
   };
 
+  const handleAddVault = async (vaultName: string) => {
+    if (!tusky) return;
+
+    try {
+      setIsLoading(true);
+      addLog(`Creating new vault: ${vaultName}`);
+      const { id } = await tusky.vault.create(vaultName, {
+        encrypted: true,
+      });
+
+      addLog(`Vault created with ID: ${id}`);
+      await loadVaults(tusky);
+      toast.success("Vault created successfully!");
+      setShowVaultDialog(false);
+    } catch (err) {
+      console.error("Create vault error:", err);
+      toast.error("Failed to create vault");
+      setError(err instanceof Error ? err.message : "Failed to create vault");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
-    <div className="container mx-auto px-4 border border-dashed mt-4">
+    <div className="container mx-auto px-4 py-8 max-w-7xl border border-dashed">
       {isLoading ? (
-        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+        <Card className="w-full border-dashed border rounded-none shadow-none">
           <CardContent className="pt-6">
             <div className="flex items-center justify-center space-x-2">
               <Loader2 className="h-5 w-5 animate-spin" />
@@ -450,7 +522,7 @@ export default function VaultPage() {
           </CardContent>
         </Card>
       ) : error ? (
-        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+        <Card className="w-full border-dashed border rounded-none shadow-none">
           <CardHeader className="border-b border-dashed pb-4">
             <div className="flex items-center space-x-2">
               <Terminal className="h-5 w-5" />
@@ -464,7 +536,7 @@ export default function VaultPage() {
           </CardContent>
         </Card>
       ) : !tusky ? (
-        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+        <Card className="w-full border-dashed border rounded-none shadow-none">
           <CardHeader className="border-b border-dashed pb-4">
             <div className="flex items-center space-x-2">
               <Terminal className="h-5 w-5" />
@@ -490,59 +562,92 @@ export default function VaultPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-4">
+        <div className="space-y-8">
           <VaultHeader
             onSignOut={handleSignOut}
-            onAddNew={() => setShowAddForm(true)}
+            onAddNew={
+              selectedVaultId
+                ? () => setShowAddForm(true)
+                : () => setShowVaultDialog(true)
+            }
+            vaults={vaults}
+            selectedVaultId={selectedVaultId}
+            onVaultSelect={handleVaultSelect}
+            onBack={() => {
+              setSelectedVaultId(null);
+              updateVaultUrl(null);
+            }}
+            showBackButton={!!selectedVaultId}
           />
-          <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
-            <CardContent className="pt-4">
-              {showAddForm && (
-                <PasswordForm
-                  password={newPassword}
-                  isLoading={isLoading}
-                  isEditing={!!editingPassword}
-                  onChange={handlePasswordChange}
-                  onSave={savePassword}
-                  onCancel={handleCancelEdit}
-                />
-              )}
-
-              <div className="space-y-6">
-                {passwords.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                    <div className="text-muted-foreground text-center space-y-2">
-                      <p className="text-lg">No passwords yet</p>
-                      <p className="text-sm">
-                        Your vault is empty. Start by adding your first
-                        password.
-                      </p>
-                    </div>
-                    <Button
-                      onClick={() => setShowAddForm(true)}
-                      className="rounded-none border-dashed"
-                    >
-                      Add Your First Password
-                    </Button>
-                  </div>
-                ) : (
-                  passwords.map((entry) => (
-                    <PasswordCard
-                      key={entry.id}
-                      title={entry.title}
-                      domain={getDomain(entry.url)}
-                      username={entry.username}
-                      password={entry.password}
-                      notes={entry.notes}
-                      isDeleting={deletingPasswordId === entry.id}
-                      onEdit={() => handleEdit(entry)}
-                      onDelete={() => deletePassword(entry.id)}
-                    />
-                  ))
+          {selectedVaultId ? (
+            <Card className="w-full border-dashed border rounded-none shadow-none">
+              <CardContent className="pt-6">
+                {showAddForm && (
+                  <PasswordForm
+                    password={newPassword}
+                    isLoading={isLoading}
+                    isEditing={!!editingPassword}
+                    onChange={handlePasswordChange}
+                    onSave={savePassword}
+                    onCancel={handleCancelEdit}
+                  />
                 )}
+
+                <div className="space-y-6">
+                  {isLoadingVault ? (
+                    <div className="space-y-4">
+                      {[1, 2, 3].map((i) => (
+                        <div key={i} className="space-y-3">
+                          <Skeleton className="h-4 w-[250px]" />
+                          <Skeleton className="h-4 w-[200px]" />
+                          <Skeleton className="h-4 w-[300px]" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : passwords.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                      <div className="text-muted-foreground text-center space-y-2">
+                        <p className="text-lg">No passwords yet</p>
+                        <p className="text-sm">
+                          Your vault is empty. Start by adding your first
+                          password.
+                        </p>
+                      </div>
+                      <Button
+                        onClick={() => setShowAddForm(true)}
+                        className="rounded-none border-dashed"
+                      >
+                        Add Your First Password
+                      </Button>
+                    </div>
+                  ) : (
+                    passwords.map((entry) => (
+                      <PasswordCard
+                        key={entry.id}
+                        title={entry.title}
+                        domain={getDomain(entry.url)}
+                        username={entry.username}
+                        password={entry.password}
+                        notes={entry.notes}
+                        isDeleting={deletingPasswordId === entry.id}
+                        onEdit={() => handleEdit(entry)}
+                        onDelete={() => deletePassword(entry.id)}
+                      />
+                    ))
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 space-y-4">
+              <div className="text-muted-foreground text-center space-y-2">
+                <p className="text-lg">Select a vault to view passwords</p>
+                <p className="text-sm">
+                  Choose a vault from the list above or create a new one.
+                </p>
               </div>
-            </CardContent>
-          </Card>
+            </div>
+          )}
         </div>
       )}
 
@@ -552,6 +657,13 @@ export default function VaultPage() {
         password={encryptionPassword}
         onPasswordChange={setEncryptionPassword}
         onSubmit={handlePasswordSubmit}
+      />
+
+      <VaultDialog
+        open={showVaultDialog}
+        onOpenChange={setShowVaultDialog}
+        onSubmit={handleAddVault}
+        isLoading={isLoading}
       />
 
       <VaultLogger logs={logs} logsEndRef={logsEndRef} />
