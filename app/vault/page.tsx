@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Tusky, Vault } from "@tusky-io/ts-sdk/web";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Loader2, Terminal } from "lucide-react";
+import { Loader2, Terminal, Users, Lock } from "lucide-react";
 import {
   useCurrentAccount,
   useSignPersonalMessage,
@@ -20,6 +20,7 @@ import { PasswordDialog } from "@/components/vault/password-dialog";
 import { VaultDialog } from "@/components/vault/vault-dialog";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Badge } from "@/components/ui/badge";
 
 interface PasswordEntry {
   id: string;
@@ -579,6 +580,62 @@ export default function VaultPage() {
             }}
             showBackButton={!!selectedVaultId}
           />
+          {!selectedVaultId && (
+            <div>
+              <div className="flex items-center space-x-2 mb-4">
+                <span className="text-sm font-mono">$ cat vault.sh</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {vaults.map((vault) => (
+                  <Card
+                    key={vault.id}
+                    className={`group relative overflow-hidden transition-all duration-200 hover:shadow-lg ${
+                      selectedVaultId === vault.id
+                        ? "border-primary"
+                        : "border-dashed hover:border-primary/50"
+                    }`}
+                    onClick={() => handleVaultSelect(vault.id)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="space-y-2">
+                        <div className="flex items-start justify-between">
+                          <div className="space-y-1">
+                            <h3 className="font-semibold text-lg">
+                              {vault.name}
+                            </h3>
+                            <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                              <Users className="h-4 w-4" />
+                              <span>{vault.members.length} members</span>
+                            </div>
+                          </div>
+                          {vault.isOwner && (
+                            <Badge variant="secondary" className="rounded-full">
+                              Owner
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                          <Lock className="h-4 w-4" />
+                          <span>Encrypted Vault</span>
+                        </div>
+                        <div className="pt-2">
+                          <Button
+                            className="w-full rounded-none border-dashed "
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleVaultSelect(vault.id);
+                            }}
+                          >
+                            View Passwords
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
           {selectedVaultId ? (
             <Card className="w-full border-dashed border rounded-none shadow-none">
               <CardContent className="pt-6">
