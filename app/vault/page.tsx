@@ -794,7 +794,7 @@ export default function VaultPage() {
         <CardHeader className="border-b border-dashed pb-4">
           <div className="flex items-center space-x-2">
             <Terminal className="h-5 w-5" />
-            <span className="text-sm font-mono">sdk_logs.sh</span>
+            <span className="text-sm font-mono">Vault³_log.sh</span>
           </div>
         </CardHeader>
         <CardContent>
