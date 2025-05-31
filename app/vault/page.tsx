@@ -342,7 +342,7 @@ export default function VaultPage() {
       notes: newPassword.notes,
     };
 
-    addLog("Saving password entry:", JSON.stringify(passwordEntry));
+    // addLog("Saving password entry:", JSON.stringify(passwordEntry));
     const blob = new Blob([JSON.stringify(passwordEntry)], {
       type: "application/json",
     });
