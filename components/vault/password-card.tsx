@@ -10,7 +10,15 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Copy, Eye, EyeOff, Edit, Trash2, ExternalLink } from "lucide-react";
+import {
+  Copy,
+  Eye,
+  EyeOff,
+  Edit,
+  Trash2,
+  ExternalLink,
+  Loader2,
+} from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { copyWithToast } from "@/lib/utils";
 import Link from "next/link";
@@ -22,6 +30,7 @@ interface PasswordCardProps {
   password: string;
   notes?: string;
   updatedAt?: string;
+  isDeleting?: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
 }
@@ -33,6 +42,7 @@ export function PasswordCard({
   password,
   notes,
   updatedAt,
+  isDeleting,
   onEdit,
   onDelete,
 }: PasswordCardProps) {
@@ -65,8 +75,17 @@ export function PasswordCard({
           <Button variant="ghost" size="icon" onClick={onEdit}>
             <Edit className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="icon" onClick={onDelete}>
-            <Trash2 className="w-4 h-4" />
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={onDelete}
+            disabled={isDeleting}
+          >
+            {isDeleting ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Trash2 className="w-4 h-4" />
+            )}
           </Button>
         </CardAction>
       </CardHeader>

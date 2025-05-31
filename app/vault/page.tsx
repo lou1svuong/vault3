@@ -24,7 +24,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Terminal } from "lucide-react";
 import { PasswordCard } from "@/components/vault/password-card";
-import Header from "@/components/layouts/header";
+import { toast } from "sonner";
 
 interface PasswordEntry {
   id: string;
@@ -57,6 +57,10 @@ export default function VaultPage() {
   const [encryptionPassword, setEncryptionPassword] = useState("");
   const [currentTuskyInstance, setCurrentTuskyInstance] =
     useState<Tusky | null>(null);
+  const [deletingPasswordId, setDeletingPasswordId] = useState<string | null>(
+    null
+  );
+  const [trashFiles, setTrashFiles] = useState<any[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
 
   const { mutate: signPersonalMessage } = useSignPersonalMessage();
@@ -134,6 +138,7 @@ export default function VaultPage() {
       setTusky(currentTuskyInstance);
       addLog("Successfully signed in with wallet");
       await loadPasswords(currentTuskyInstance);
+      await loadTrashFiles(currentTuskyInstance);
     } catch (err) {
       console.error("Encryption error:", err);
       setError(
@@ -171,10 +176,12 @@ export default function VaultPage() {
   // Load passwords from vault
   const loadPasswords = async (tuskyInstance: Tusky) => {
     try {
+      addLog("Loading passwords from vault...");
       const vaults = await tuskyInstance.vault.listAll();
       const passwordVault = vaults.find((v) => v.name === "Password Vault");
 
       if (!passwordVault) {
+        addLog("Password vault not found, creating new one...");
         const { id } = await tuskyInstance.vault.create("Password Vault", {
           encrypted: true,
         });
@@ -182,20 +189,71 @@ export default function VaultPage() {
         return;
       }
 
+      addLog(`Found password vault: ${passwordVault.id}`);
       const files = await tuskyInstance.file.listAll({
         vaultId: passwordVault.id,
       });
-      const passwordEntries: PasswordEntry[] = [];
+      addLog(`Found ${files.length} files in vault`);
 
-      for (const file of files) {
-        const buffer = await tuskyInstance.file.arrayBuffer(file.id);
-        const content = new TextDecoder().decode(buffer);
-        passwordEntries.push(JSON.parse(content));
+      // Filter out files that are in trash
+      const activeFiles = files.filter((file) => !file.isTrashed);
+      addLog(`Found ${activeFiles.length} active files (not in trash)`);
+
+      const passwordEntries: PasswordEntry[] = [];
+      for (const file of activeFiles) {
+        try {
+          addLog(`Loading file: ${file.name}`);
+          const buffer = await tuskyInstance.file.arrayBuffer(file.id);
+          const content = new TextDecoder().decode(buffer);
+          const entry = JSON.parse(content);
+          passwordEntries.push(entry);
+        } catch (err) {
+          console.error(`Error loading file ${file.name}:`, err);
+          addLog(
+            `Error loading file ${file.name}: ${
+              err instanceof Error ? err.message : "Unknown error"
+            }`
+          );
+        }
       }
 
+      addLog(`Successfully loaded ${passwordEntries.length} passwords`);
       setPasswords(passwordEntries);
     } catch (err) {
+      console.error("Load passwords error:", err);
       setError(err instanceof Error ? err.message : "Failed to load passwords");
+    }
+  };
+
+  const loadTrashFiles = async (tuskyInstance: Tusky) => {
+    try {
+      addLog("Loading trash files...");
+      const vaults = await tuskyInstance.vault.listAll();
+      const passwordVault = vaults.find((v) => v.name === "Password Vault");
+
+      if (!passwordVault) {
+        addLog("Password vault not found");
+        return;
+      }
+
+      const files = await tuskyInstance.file.listAll({
+        vaultId: passwordVault.id,
+      });
+
+      // Filter only trashed files
+      const trashedFiles = files.filter((file) => file.isTrashed);
+      addLog(`Found ${trashedFiles.length} files in trash`);
+      addLog(
+        "Trash files:",
+        JSON.stringify(trashedFiles.map((f) => ({ id: f.id, name: f.name })))
+      );
+
+      setTrashFiles(trashedFiles);
+    } catch (err) {
+      console.error("Load trash error:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to load trash files"
+      );
     }
   };
 
@@ -246,7 +304,6 @@ export default function VaultPage() {
     }
   };
 
-  // Helper function to save password to vault
   const savePasswordToVault = async (tuskyInstance: Tusky, vaultId: string) => {
     const passwordEntry: PasswordEntry = {
       id: Date.now().toString(),
@@ -257,13 +314,17 @@ export default function VaultPage() {
       notes: newPassword.notes,
     };
 
+    addLog("Saving password entry:", JSON.stringify(passwordEntry));
     const blob = new Blob([JSON.stringify(passwordEntry)], {
       type: "application/json",
     });
+    const fileName = `${passwordEntry.title}.json`;
+    addLog(`Uploading file: ${fileName}`);
     await tuskyInstance.file.upload(vaultId, blob, {
-      name: `${passwordEntry.title}.json`,
+      name: fileName,
       mimeType: "application/json",
     });
+    addLog("File uploaded successfully");
   };
 
   // Delete password
@@ -271,27 +332,81 @@ export default function VaultPage() {
     if (!tusky) return;
 
     try {
-      setIsLoading(true);
       setError(null);
+      setDeletingPasswordId(id);
 
+      addLog("Listing vaults...", "tusky.vault.listAll()");
       const vaults = await tusky.vault.listAll();
       const passwordVault = vaults.find((v) => v.name === "Password Vault");
 
       if (passwordVault) {
+        addLog(
+          "Listing files in vault...",
+          `tusky.file.listAll({ vaultId: ${passwordVault.id} })`
+        );
         const files = await tusky.file.listAll({ vaultId: passwordVault.id });
-        const fileToDelete = files.find((f) => f.name === `${id}.json`);
+        addLog(`Found ${files.length} files in vault`);
+        addLog(
+          "Files in vault:",
+          JSON.stringify(files.map((f) => ({ id: f.id, name: f.name })))
+        );
+
+        // Find the password entry first to get its title
+        const passwordToDelete = passwords.find((p) => p.id === id);
+        if (!passwordToDelete) {
+          addLog("Password entry not found in state");
+          toast.error("Password entry not found.");
+          return;
+        }
+
+        const fileToDelete = files.find(
+          (f) => f.name === `${passwordToDelete.title}.json`
+        );
+        addLog(`Looking for file: ${passwordToDelete.title}.json`);
 
         if (fileToDelete) {
+          addLog("Deleting file...", `tusky.file.delete(${fileToDelete.id})`);
           await tusky.file.delete(fileToDelete.id);
-          await loadPasswords(tusky);
+
+          // Permanently delete the file from trash
+          addLog(
+            "Permanently deleting file from trash...",
+            `tusky.file.deletePermanently(${fileToDelete.id})`
+          );
+          await tusky.file.deletePermanently(fileToDelete.id);
+
+          // Verify file is deleted
+          const filesAfterDelete = await tusky.file.listAll({
+            vaultId: passwordVault.id,
+          });
+          const fileStillExists = filesAfterDelete.some(
+            (f) => f.id === fileToDelete.id
+          );
+
+          if (fileStillExists) {
+            addLog("File still exists after deletion attempt");
+            toast.error("Failed to delete password. Please try again.");
+            return;
+          }
+
+          toast.success("Password deleted!");
+          setPasswords((prev) => prev.filter((entry) => entry.id !== id));
+        } else {
+          addLog("File not found in vault");
+          toast.error("Password file not found in vault.");
         }
+      } else {
+        addLog("Password vault not found");
+        toast.error("Password vault not found.");
       }
     } catch (err) {
+      console.error("Delete error:", err);
+      toast.error("Error deleting password.");
       setError(
         err instanceof Error ? err.message : "Failed to delete password"
       );
     } finally {
-      setIsLoading(false);
+      setDeletingPasswordId(null);
     }
   };
 
@@ -453,8 +568,7 @@ export default function VaultPage() {
                     username={entry.username}
                     password={entry.password}
                     notes={entry.notes}
-                    // updatedAt={entry.updatedAt}
-                    // onEdit={() => handleEdit(entry.id)}
+                    isDeleting={deletingPasswordId === entry.id}
                     onDelete={() => deletePassword(entry.id)}
                   />
                 ))}
