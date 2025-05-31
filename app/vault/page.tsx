@@ -52,6 +52,9 @@ export default function VaultPage() {
   const [error, setError] = useState<string | null>(null);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newPassword, setNewPassword] = useState<Partial<PasswordEntry>>({});
+  const [editingPassword, setEditingPassword] = useState<PasswordEntry | null>(
+    null
+  );
   const [logs, setLogs] = useState<string[]>([]);
   const [showPasswordDialog, setShowPasswordDialog] = useState(false);
   const [encryptionPassword, setEncryptionPassword] = useState("");
@@ -257,7 +260,24 @@ export default function VaultPage() {
     }
   };
 
-  // Save new password
+  const handleEdit = (password: PasswordEntry) => {
+    setEditingPassword(password);
+    setNewPassword({
+      title: password.title,
+      username: password.username,
+      password: password.password,
+      url: password.url,
+      notes: password.notes,
+    });
+    setShowAddForm(true);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPassword(null);
+    setNewPassword({});
+    setShowAddForm(false);
+  };
+
   const savePassword = async () => {
     if (!tusky) {
       setError("Tusky is not initialized");
@@ -291,11 +311,23 @@ export default function VaultPage() {
         });
         await savePasswordToVault(tusky, id);
       } else {
+        if (editingPassword) {
+          // Delete old file if editing
+          const files = await tusky.file.listAll({ vaultId: passwordVault.id });
+          const oldFile = files.find(
+            (f) => f.name === `${editingPassword.title}.json`
+          );
+          if (oldFile) {
+            await tusky.file.delete(oldFile.id);
+            await tusky.file.deletePermanently(oldFile.id);
+          }
+        }
         await savePasswordToVault(tusky, passwordVault.id);
       }
 
       setShowAddForm(false);
       setNewPassword({});
+      setEditingPassword(null);
       await loadPasswords(tusky);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save password");
@@ -483,7 +515,9 @@ export default function VaultPage() {
                 <div className="space-y-4 mb-6">
                   <div className="flex items-center space-x-2">
                     <span className="text-muted-foreground">$</span>
-                    <span>add_password</span>
+                    <span>
+                      {editingPassword ? "edit_password" : "add_password"}
+                    </span>
                   </div>
                   <div className="pl-6 space-y-4">
                     <Input
@@ -541,7 +575,7 @@ export default function VaultPage() {
                     />
                     <div className="flex justify-end space-x-2">
                       <Button
-                        onClick={() => setShowAddForm(false)}
+                        onClick={handleCancelEdit}
                         variant="outline"
                         className="rounded-none border-dashed"
                       >
@@ -552,7 +586,11 @@ export default function VaultPage() {
                         disabled={isLoading}
                         className="rounded-none border-dashed"
                       >
-                        {isLoading ? "Saving..." : "Save"}
+                        {isLoading
+                          ? "Saving..."
+                          : editingPassword
+                          ? "Update"
+                          : "Save"}
                       </Button>
                     </div>
                   </div>
@@ -569,6 +607,7 @@ export default function VaultPage() {
                     password={entry.password}
                     notes={entry.notes}
                     isDeleting={deletingPasswordId === entry.id}
+                    onEdit={() => handleEdit(entry)}
                     onDelete={() => deletePassword(entry.id)}
                   />
                 ))}
