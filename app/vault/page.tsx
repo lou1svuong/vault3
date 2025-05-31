@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Tusky, Vault } from "@tusky-io/ts-sdk/web";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Loader2, Terminal, Users, Lock } from "lucide-react";
+import { Loader2, Terminal, Users, Lock, Trash2 } from "lucide-react";
 import {
   useCurrentAccount,
   useSignPersonalMessage,
@@ -21,6 +21,7 @@ import { VaultDialog } from "@/components/vault/vault-dialog";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { DeleteVaultDialog } from "@/components/vault/delete-vault-dialog";
 
 interface PasswordEntry {
   id: string;
@@ -74,6 +75,11 @@ export default function VaultPage() {
   const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null);
   const [isLoadingVault, setIsLoadingVault] = useState(false);
   const [showVaultDialog, setShowVaultDialog] = useState(false);
+  const [deletingVaultId, setDeletingVaultId] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [vaultToDelete, setVaultToDelete] = useState<VaultWithMembers | null>(
+    null
+  );
 
   const { mutate: signPersonalMessage } = useSignPersonalMessage();
   const account = useCurrentAccount();
@@ -324,13 +330,63 @@ export default function VaultPage() {
     setNewPassword((prev) => ({ ...prev, [field]: value }));
   };
 
+  const deletePassword = async (id: string) => {
+    if (!tusky || !selectedVaultId) return;
+
+    try {
+      setError(null);
+      setDeletingPasswordId(id);
+
+      const files = await tusky.file.listAll({ vaultId: selectedVaultId });
+      const passwordToDelete = passwords.find((p) => p.id === id);
+      if (!passwordToDelete) {
+        toast.error("Password entry not found.");
+        return;
+      }
+
+      const fileToDelete = files.find(
+        (f) => f.name === `${passwordToDelete.title}.json`
+      );
+
+      if (fileToDelete) {
+        addLog(`Deleting password file: ${fileToDelete.name}`);
+        await tusky.file.delete(fileToDelete.id);
+        await tusky.file.deletePermanently(fileToDelete.id);
+
+        const filesAfterDelete = await tusky.file.listAll({
+          vaultId: selectedVaultId,
+        });
+        const fileStillExists = filesAfterDelete.some(
+          (f) => f.id === fileToDelete.id
+        );
+
+        if (fileStillExists) {
+          toast.error("Failed to delete password. Please try again.");
+          return;
+        }
+
+        toast.success("Password deleted successfully!");
+        setPasswords((prev) => prev.filter((entry) => entry.id !== id));
+      } else {
+        toast.error("Password file not found in vault.");
+      }
+    } catch (err) {
+      console.error("Delete error:", err);
+      toast.error("Error deleting password.");
+      setError(
+        err instanceof Error ? err.message : "Failed to delete password"
+      );
+    } finally {
+      setDeletingPasswordId(null);
+    }
+  };
+
   const savePassword = async () => {
-    if (!tusky) {
-      setError("Tusky is not initialized");
+    if (!tusky || !selectedVaultId) {
+      setError("Tusky is not initialized or no vault selected");
       return;
     }
 
-    // Check if required fields are filled
     if (!newPassword.title?.trim()) {
       setError("Title is required");
       return;
@@ -348,143 +404,56 @@ export default function VaultPage() {
       setIsLoading(true);
       setError(null);
 
-      const vaults = await tusky.vault.listAll();
-      const passwordVault = vaults.find((v) => v.name === "Password Vault");
-
-      if (!passwordVault) {
-        const { id } = await tusky.vault.create("Password Vault", {
-          encrypted: true,
-        });
-        await savePasswordToVault(tusky, id);
-      } else {
-        if (editingPassword) {
-          // Delete old file if editing
-          const files = await tusky.file.listAll({ vaultId: passwordVault.id });
-          const oldFile = files.find(
-            (f) => f.name === `${editingPassword.title}.json`
-          );
-          if (oldFile) {
-            await tusky.file.delete(oldFile.id);
-            await tusky.file.deletePermanently(oldFile.id);
-          }
+      if (editingPassword) {
+        const files = await tusky.file.listAll({ vaultId: selectedVaultId });
+        const oldFile = files.find(
+          (f) => f.name === `${editingPassword.title}.json`
+        );
+        if (oldFile) {
+          addLog(`Deleting old password file: ${oldFile.name}`);
+          await tusky.file.delete(oldFile.id);
+          await tusky.file.deletePermanently(oldFile.id);
         }
-        await savePasswordToVault(tusky, passwordVault.id);
       }
+
+      const passwordEntry: PasswordEntry = {
+        id: Date.now().toString(),
+        title: newPassword.title!,
+        username: newPassword.username!,
+        password: newPassword.password!,
+        url: newPassword.url,
+        notes: newPassword.notes,
+      };
+
+      const blob = new Blob([JSON.stringify(passwordEntry)], {
+        type: "application/json",
+      });
+      const fileName = `${passwordEntry.title}.json`;
+      addLog(`Uploading password file: ${fileName}`);
+      await tusky.file.upload(selectedVaultId, blob, {
+        name: fileName,
+        mimeType: "application/json",
+      });
 
       setShowAddForm(false);
       setNewPassword({});
       setEditingPassword(null);
-      await loadPasswords(tusky, selectedVaultId || "");
+      toast.success(
+        editingPassword
+          ? "Password updated successfully!"
+          : "Password saved successfully!"
+      );
+      await loadPasswords(tusky, selectedVaultId);
     } catch (err) {
+      console.error("Save password error:", err);
+      toast.error(
+        editingPassword
+          ? "Failed to update password"
+          : "Failed to save password"
+      );
       setError(err instanceof Error ? err.message : "Failed to save password");
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const savePasswordToVault = async (tuskyInstance: Tusky, vaultId: string) => {
-    const passwordEntry: PasswordEntry = {
-      id: Date.now().toString(),
-      title: newPassword.title!,
-      username: newPassword.username!,
-      password: newPassword.password!,
-      url: newPassword.url,
-      notes: newPassword.notes,
-    };
-
-    // addLog("Saving password entry:", JSON.stringify(passwordEntry));
-    const blob = new Blob([JSON.stringify(passwordEntry)], {
-      type: "application/json",
-    });
-    const fileName = `${passwordEntry.title}.json`;
-    addLog(`Uploading file: ${fileName}`);
-    await tuskyInstance.file.upload(vaultId, blob, {
-      name: fileName,
-      mimeType: "application/json",
-    });
-    addLog("File uploaded successfully");
-  };
-
-  // Delete password
-  const deletePassword = async (id: string) => {
-    if (!tusky) return;
-
-    try {
-      setError(null);
-      setDeletingPasswordId(id);
-
-      addLog("Listing vaults...", "tusky.vault.listAll()");
-      const vaults = await tusky.vault.listAll();
-      const passwordVault = vaults.find((v) => v.name === "Password Vault");
-
-      if (passwordVault) {
-        addLog(
-          "Listing files in vault...",
-          `tusky.file.listAll({ vaultId: ${passwordVault.id} })`
-        );
-        const files = await tusky.file.listAll({ vaultId: passwordVault.id });
-        addLog(`Found ${files.length} files in vault`);
-        addLog(
-          "Files in vault:",
-          JSON.stringify(files.map((f) => ({ id: f.id, name: f.name })))
-        );
-
-        // Find the password entry first to get its title
-        const passwordToDelete = passwords.find((p) => p.id === id);
-        if (!passwordToDelete) {
-          addLog("Password entry not found in state");
-          toast.error("Password entry not found.");
-          return;
-        }
-
-        const fileToDelete = files.find(
-          (f) => f.name === `${passwordToDelete.title}.json`
-        );
-        addLog(`Looking for file: ${passwordToDelete.title}.json`);
-
-        if (fileToDelete) {
-          addLog("Deleting file...", `tusky.file.delete(${fileToDelete.id})`);
-          await tusky.file.delete(fileToDelete.id);
-
-          // Permanently delete the file from trash
-          addLog(
-            "Permanently deleting file from trash...",
-            `tusky.file.deletePermanently(${fileToDelete.id})`
-          );
-          await tusky.file.deletePermanently(fileToDelete.id);
-
-          // Verify file is deleted
-          const filesAfterDelete = await tusky.file.listAll({
-            vaultId: passwordVault.id,
-          });
-          const fileStillExists = filesAfterDelete.some(
-            (f) => f.id === fileToDelete.id
-          );
-
-          if (fileStillExists) {
-            addLog("File still exists after deletion attempt");
-            toast.error("Failed to delete password. Please try again.");
-            return;
-          }
-
-          toast.success("Password deleted!");
-          setPasswords((prev) => prev.filter((entry) => entry.id !== id));
-        } else {
-          addLog("File not found in vault");
-          toast.error("Password file not found in vault.");
-        }
-      } else {
-        addLog("Password vault not found");
-        toast.error("Password vault not found.");
-      }
-    } catch (err) {
-      console.error("Delete error:", err);
-      toast.error("Error deleting password.");
-      setError(
-        err instanceof Error ? err.message : "Failed to delete password"
-      );
-    } finally {
-      setDeletingPasswordId(null);
     }
   };
 
@@ -508,6 +477,45 @@ export default function VaultPage() {
       setError(err instanceof Error ? err.message : "Failed to create vault");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleDeleteVault = async (vaultId: string) => {
+    if (!tusky) return;
+
+    try {
+      setDeletingVaultId(vaultId);
+      addLog(`Deleting vault ${vaultId}...`);
+
+      // Delete all files in the vault first
+      const files = await tusky.file.listAll({ vaultId });
+      for (const file of files) {
+        await tusky.file.delete(file.id);
+        await tusky.file.deletePermanently(file.id);
+      }
+
+      // Delete the vault
+      await tusky.vault.delete(vaultId);
+
+      addLog(`Vault ${vaultId} deleted successfully`);
+      toast.success("Vault deleted successfully");
+
+      // Reload vaults list
+      await loadVaults(tusky);
+
+      // If the deleted vault was selected, clear selection
+      if (selectedVaultId === vaultId) {
+        setSelectedVaultId(null);
+        updateVaultUrl(null);
+      }
+    } catch (err) {
+      console.error("Delete vault error:", err);
+      toast.error("Failed to delete vault");
+      setError(err instanceof Error ? err.message : "Failed to delete vault");
+    } finally {
+      setDeletingVaultId(null);
+      setShowDeleteDialog(false);
+      setVaultToDelete(null);
     }
   };
 
@@ -608,11 +616,32 @@ export default function VaultPage() {
                               <span>{vault.members.length} members</span>
                             </div>
                           </div>
-                          {vault.isOwner && (
-                            <Badge variant="secondary" className="rounded-full">
-                              Owner
-                            </Badge>
-                          )}
+                          <div className="flex items-center space-x-2">
+                            {vault.isOwner && (
+                              <Badge variant="secondary" className="rounded-lg">
+                                Owner
+                              </Badge>
+                            )}
+                            {vault.isOwner && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="w-8 hover:text-destructive-foreground"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVaultToDelete(vault);
+                                  setShowDeleteDialog(true);
+                                }}
+                                disabled={deletingVaultId === vault.id}
+                              >
+                                {deletingVaultId === vault.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
+                                )}
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <div className="flex items-center space-x-2 text-sm text-muted-foreground">
                           <Lock className="h-4 w-4" />
@@ -620,7 +649,7 @@ export default function VaultPage() {
                         </div>
                         <div className="pt-2">
                           <Button
-                            className="w-full rounded-none border-dashed "
+                            className="w-full rounded-none border-dashed"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleVaultSelect(vault.id);
@@ -721,6 +750,14 @@ export default function VaultPage() {
         onOpenChange={setShowVaultDialog}
         onSubmit={handleAddVault}
         isLoading={isLoading}
+      />
+
+      <DeleteVaultDialog
+        open={showDeleteDialog}
+        onOpenChange={setShowDeleteDialog}
+        onConfirm={() => vaultToDelete && handleDeleteVault(vaultToDelete.id)}
+        isLoading={!!deletingVaultId}
+        vaultName={vaultToDelete?.name || ""}
       />
 
       <VaultLogger logs={logs} logsEndRef={logsEndRef} />
