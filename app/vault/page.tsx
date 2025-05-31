@@ -1,0 +1,543 @@
+"use client";
+
+import { useState, useRef, useEffect } from "react";
+import { Tusky } from "@tusky-io/ts-sdk/web";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Loader2 } from "lucide-react";
+import {
+  useCurrentAccount,
+  useSignPersonalMessage,
+  useCurrentWallet,
+} from "@mysten/dapp-kit";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import { Terminal } from "lucide-react";
+import { PasswordCard } from "@/components/vault/password-card";
+import Header from "@/components/layouts/header";
+
+interface PasswordEntry {
+  id: string;
+  title: string;
+  username: string;
+  password: string;
+  url?: string;
+  notes?: string;
+}
+
+function getDomain(url?: string) {
+  if (!url) return "";
+  try {
+    const withProtocol = url.match(/^https?:\/\//) ? url : `https://${url}`;
+    return new URL(withProtocol).hostname;
+  } catch {
+    return "";
+  }
+}
+
+export default function VaultPage() {
+  const [tusky, setTusky] = useState<Tusky | null>(null);
+  const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [newPassword, setNewPassword] = useState<Partial<PasswordEntry>>({});
+  const [logs, setLogs] = useState<string[]>([]);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [encryptionPassword, setEncryptionPassword] = useState("");
+  const [currentTuskyInstance, setCurrentTuskyInstance] =
+    useState<Tusky | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  const { mutate: signPersonalMessage } = useSignPersonalMessage();
+  const account = useCurrentAccount();
+  const wallet = useCurrentWallet();
+
+  const scrollToBottom = () => {
+    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [logs]);
+
+  const addLog = (message: string, methodCall?: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    if (methodCall) {
+      setLogs((prev) => [
+        ...prev,
+        `${timestamp}: ${message}`,
+        `  → ${methodCall}`,
+      ]);
+    } else {
+      setLogs((prev) => [...prev, `${timestamp}: ${message}`]);
+    }
+  };
+
+  const handleSignInWithWallet = async () => {
+    if (account) {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        addLog(
+          "Initializing Tusky with wallet...",
+          "Tusky.init({ wallet: { signPersonalMessage, account } })"
+        );
+        const tuskyInstance = new Tusky({
+          wallet: {
+            signPersonalMessage,
+            account: account as any,
+          },
+        });
+
+        addLog("Signing in with wallet...", "tusky.auth.signIn()");
+        await tuskyInstance.auth.signIn();
+
+        setCurrentTuskyInstance(tuskyInstance);
+        setShowPasswordDialog(true);
+      } catch (err) {
+        console.error("Sign in error:", err);
+        setError(err instanceof Error ? err.message : "Failed to sign in");
+        setIsLoading(false);
+      }
+    }
+  };
+
+  const handlePasswordSubmit = async () => {
+    if (!currentTuskyInstance || !encryptionPassword) return;
+
+    setShowPasswordDialog(false);
+    setEncryptionPassword("");
+
+    try {
+      setIsLoading(true);
+      addLog("Setting up encryption context...");
+      await handleEncryptionContext(currentTuskyInstance);
+
+      addLog(
+        "Adding keystore encrypter...",
+        "tusky.addEncrypter({ keystore: true })"
+      );
+      await currentTuskyInstance.addEncrypter({ keystore: true });
+
+      setTusky(currentTuskyInstance);
+      addLog("Successfully signed in with wallet");
+      await loadPasswords(currentTuskyInstance);
+    } catch (err) {
+      console.error("Encryption error:", err);
+      setError(
+        err instanceof Error ? err.message : "Failed to set up encryption"
+      );
+    } finally {
+      setIsLoading(false);
+      setCurrentTuskyInstance(null);
+    }
+  };
+
+  const handleSignOut = async () => {
+    if (tusky) {
+      addLog("Signing out...", "tusky.signOut()");
+      tusky.signOut();
+      setTusky(null);
+      addLog("Successfully signed out");
+    }
+  };
+
+  const handleEncryptionContext = async (tuskyInstance: Tusky) => {
+    if (!encryptionPassword) {
+      throw new Error("Password is required.");
+    }
+    addLog(
+      "Adding password encrypter...",
+      'tusky.addEncrypter({ password: "***", keystore: true })'
+    );
+    await tuskyInstance.addEncrypter({
+      password: encryptionPassword,
+      keystore: true,
+    });
+  };
+
+  // Load passwords from vault
+  const loadPasswords = async (tuskyInstance: Tusky) => {
+    try {
+      const vaults = await tuskyInstance.vault.listAll();
+      const passwordVault = vaults.find((v) => v.name === "Password Vault");
+
+      if (!passwordVault) {
+        const { id } = await tuskyInstance.vault.create("Password Vault", {
+          encrypted: true,
+        });
+        setPasswords([]);
+        return;
+      }
+
+      const files = await tuskyInstance.file.listAll({
+        vaultId: passwordVault.id,
+      });
+      const passwordEntries: PasswordEntry[] = [];
+
+      for (const file of files) {
+        const buffer = await tuskyInstance.file.arrayBuffer(file.id);
+        const content = new TextDecoder().decode(buffer);
+        passwordEntries.push(JSON.parse(content));
+      }
+
+      setPasswords(passwordEntries);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load passwords");
+    }
+  };
+
+  // Save new password
+  const savePassword = async () => {
+    if (!tusky) {
+      setError("Tusky is not initialized");
+      return;
+    }
+
+    // Check if required fields are filled
+    if (!newPassword.title?.trim()) {
+      setError("Title is required");
+      return;
+    }
+    if (!newPassword.username?.trim()) {
+      setError("Username is required");
+      return;
+    }
+    if (!newPassword.password?.trim()) {
+      setError("Password is required");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const vaults = await tusky.vault.listAll();
+      const passwordVault = vaults.find((v) => v.name === "Password Vault");
+
+      if (!passwordVault) {
+        const { id } = await tusky.vault.create("Password Vault", {
+          encrypted: true,
+        });
+        await savePasswordToVault(tusky, id);
+      } else {
+        await savePasswordToVault(tusky, passwordVault.id);
+      }
+
+      setShowAddForm(false);
+      setNewPassword({});
+      await loadPasswords(tusky);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save password");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Helper function to save password to vault
+  const savePasswordToVault = async (tuskyInstance: Tusky, vaultId: string) => {
+    const passwordEntry: PasswordEntry = {
+      id: Date.now().toString(),
+      title: newPassword.title!,
+      username: newPassword.username!,
+      password: newPassword.password!,
+      url: newPassword.url,
+      notes: newPassword.notes,
+    };
+
+    const blob = new Blob([JSON.stringify(passwordEntry)], {
+      type: "application/json",
+    });
+    await tuskyInstance.file.upload(vaultId, blob, {
+      name: `${passwordEntry.title}.json`,
+      mimeType: "application/json",
+    });
+  };
+
+  // Delete password
+  const deletePassword = async (id: string) => {
+    if (!tusky) return;
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const vaults = await tusky.vault.listAll();
+      const passwordVault = vaults.find((v) => v.name === "Password Vault");
+
+      if (passwordVault) {
+        const files = await tusky.file.listAll({ vaultId: passwordVault.id });
+        const fileToDelete = files.find((f) => f.name === `${id}.json`);
+
+        if (fileToDelete) {
+          await tusky.file.delete(fileToDelete.id);
+          await loadPasswords(tusky);
+        }
+      }
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Failed to delete password"
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="container mx-auto px-4 border border-dashed mt-4">
+      {isLoading ? (
+        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-center space-x-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="font-mono">Loading vault...</span>
+            </div>
+          </CardContent>
+        </Card>
+      ) : error ? (
+        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+          <CardHeader className="border-b border-dashed pb-4">
+            <div className="flex items-center space-x-2">
+              <Terminal className="h-5 w-5" />
+              <span className="text-sm font-mono">error.sh</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <Alert variant="destructive" className="font-mono">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      ) : !tusky ? (
+        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+          <CardHeader className="border-b border-dashed pb-4">
+            <div className="flex items-center space-x-2">
+              <Terminal className="h-5 w-5" />
+              <span className="text-sm font-mono">vault.sh</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-muted-foreground">$</span>
+                <span>connect_wallet</span>
+              </div>
+              <div className="pl-6">
+                <Button
+                  onClick={handleSignInWithWallet}
+                  variant="outline"
+                  className="w-full rounded-none border-dashed"
+                >
+                  Sign in with Wallet
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+            <CardHeader className="border-b border-dashed flex items-center">
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center space-x-2">
+                  <Terminal className="h-5 w-5" />
+                  <span className="text-sm font-mono">vault.sh</span>
+                </div>
+                <Button
+                  onClick={() => setShowAddForm(true)}
+                  className="rounded-none border-dashed"
+                >
+                  Add New Password
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {showAddForm && (
+                <div className="space-y-4 mb-6">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-muted-foreground">$</span>
+                    <span>add_password</span>
+                  </div>
+                  <div className="pl-6 space-y-4">
+                    <Input
+                      placeholder="Title"
+                      value={newPassword.title || ""}
+                      onChange={(e) =>
+                        setNewPassword({
+                          ...newPassword,
+                          title: e.target.value,
+                        })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <Input
+                      placeholder="Username"
+                      value={newPassword.username || ""}
+                      onChange={(e) =>
+                        setNewPassword({
+                          ...newPassword,
+                          username: e.target.value,
+                        })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <Input
+                      type="password"
+                      placeholder="Password"
+                      value={newPassword.password || ""}
+                      onChange={(e) =>
+                        setNewPassword({
+                          ...newPassword,
+                          password: e.target.value,
+                        })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <Input
+                      placeholder="URL (optional)"
+                      value={newPassword.url || ""}
+                      onChange={(e) =>
+                        setNewPassword({ ...newPassword, url: e.target.value })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <Textarea
+                      placeholder="Notes (optional)"
+                      value={newPassword.notes || ""}
+                      onChange={(e) =>
+                        setNewPassword({
+                          ...newPassword,
+                          notes: e.target.value,
+                        })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        onClick={() => setShowAddForm(false)}
+                        variant="outline"
+                        className="rounded-none border-dashed"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={savePassword}
+                        disabled={isLoading}
+                        className="rounded-none border-dashed"
+                      >
+                        {isLoading ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-6">
+                {passwords.map((entry) => (
+                  <PasswordCard
+                    key={entry.id}
+                    title={entry.title}
+                    domain={getDomain(entry.url)}
+                    username={entry.username}
+                    password={entry.password}
+                    notes={entry.notes}
+                    // updatedAt={entry.updatedAt}
+                    // onEdit={() => handleEdit(entry.id)}
+                    onDelete={() => deletePassword(entry.id)}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent className="border-dashed rounded-none">
+          <DialogHeader>
+            <DialogTitle className="font-mono">
+              Set Encryption Password
+            </DialogTitle>
+            <DialogDescription className="font-mono">
+              Please enter a password to encrypt your vault. This password will
+              be required to access your vault in the future.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="password" className="font-mono">
+                Password
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                value={encryptionPassword}
+                onChange={(e) => setEncryptionPassword(e.target.value)}
+                placeholder="Enter your encryption password"
+                className="rounded-none border-dashed"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowPasswordDialog(false)}
+              className="rounded-none border-dashed"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handlePasswordSubmit}
+              disabled={!encryptionPassword}
+              className="rounded-none border-dashed"
+            >
+              Continue
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Card className="w-full border-dashed border rounded-none shadow-none mt-4">
+        <CardHeader className="border-b border-dashed pb-4">
+          <div className="flex items-center space-x-2">
+            <Terminal className="h-5 w-5" />
+            <span className="text-sm font-mono">sdk_logs.sh</span>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="bg-gray-900 rounded-lg p-4 max-h-64 overflow-y-auto font-mono text-sm">
+            {logs.length === 0 ? (
+              <p className="text-gray-400">No activity yet...</p>
+            ) : (
+              logs.map((log, index) => (
+                <div
+                  key={index}
+                  className={`${
+                    log.startsWith("  →")
+                      ? "text-green-400 ml-4"
+                      : "text-gray-300"
+                  }`}
+                >
+                  {log}
+                </div>
+              ))
+            )}
+            <div ref={logsEndRef} />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

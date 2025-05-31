@@ -1,6 +1,8 @@
 import { Toaster } from "@/components/ui/sonner";
 import { ThemeProvider } from "next-themes";
-import { WalletProviders } from "./wallet-provider";
+import { SuiClientProviderWrapper } from "./sui-client-provider";
+import { WalletProviderWrapper } from "./wallet-provider";
+import "@mysten/dapp-kit/dist/index.css";
 
 export default function RootProviders({
   children,
@@ -15,7 +17,9 @@ export default function RootProviders({
       disableTransitionOnChange
     >
       <Toaster position="bottom-right" closeButton />
-      <WalletProviders>{children}</WalletProviders>
+      <SuiClientProviderWrapper>
+        <WalletProviderWrapper>{children}</WalletProviderWrapper>
+      </SuiClientProviderWrapper>
     </ThemeProvider>
   );
 }
