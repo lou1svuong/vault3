@@ -5,7 +5,12 @@ import { Tusky } from "@tusky-io/ts-sdk/web";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+} from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import {
   useCurrentAccount,
@@ -22,9 +27,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Terminal } from "lucide-react";
+import { Terminal, Lock } from "lucide-react";
 import { PasswordCard } from "@/components/vault/password-card";
 import { toast } from "sonner";
+import Link from "next/link";
 
 interface PasswordEntry {
   id: string;
@@ -65,6 +71,7 @@ export default function VaultPage() {
   );
   const [trashFiles, setTrashFiles] = useState<any[]>([]);
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const [isLocked, setIsLocked] = useState(false);
 
   const { mutate: signPersonalMessage } = useSignPersonalMessage();
   const account = useCurrentAccount();
@@ -442,6 +449,54 @@ export default function VaultPage() {
     }
   };
 
+  const handleLockVault = () => {
+    if (tusky) {
+      addLog("Locking vault...", "tusky.signOut()");
+      tusky.signOut();
+      setTusky(null);
+      setIsLocked(true);
+      addLog("Vault locked successfully");
+    }
+  };
+
+  const handleUnlock = async () => {
+    if (!encryptionPassword) {
+      toast.error("Please enter your password");
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      addLog("Initializing Tusky with wallet...");
+      const tuskyInstance = new Tusky({
+        wallet: {
+          signPersonalMessage,
+          account: account as any,
+        },
+      });
+
+      addLog("Setting up encryption context...");
+      await handleEncryptionContext(tuskyInstance);
+
+      addLog("Adding keystore encrypter...");
+      await tuskyInstance.addEncrypter({ keystore: true });
+
+      setTusky(tuskyInstance);
+      setIsLocked(false);
+      addLog("Successfully unlocked vault");
+      await loadPasswords(tuskyInstance);
+      await loadTrashFiles(tuskyInstance);
+    } catch (err) {
+      console.error("Unlock error:", err);
+      setError(err instanceof Error ? err.message : "Failed to unlock vault");
+    } finally {
+      setIsLoading(false);
+      setEncryptionPassword("");
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 border border-dashed mt-4">
       {isLoading ? (
@@ -493,6 +548,70 @@ export default function VaultPage() {
             </div>
           </CardContent>
         </Card>
+      ) : isLocked ? (
+        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+          <CardHeader className="border-b border-dashed pb-4">
+            <div className="flex items-center space-x-2">
+              <Terminal className="h-5 w-5" />
+              <span className="text-sm font-mono">vault.sh</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-muted-foreground">$</span>
+                <span>status</span>
+              </div>
+              <div className="space-y-1 pl-6">
+                <div className="flex items-center space-x-2">
+                  <Lock className="h-5 w-5 text-muted-foreground" />
+                  <p className="text-3xl font-bold">Vault Locked</p>
+                </div>
+                <p className="text-muted-foreground">
+                  Your vault is currently locked. Please enter your encryption
+                  password to continue.
+                </p>
+              </div>
+
+              <div className="space-y-4 pt-4">
+                <div className="space-y-2">
+                  <Label htmlFor="password" className="font-mono">
+                    Encryption Password
+                  </Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    value={encryptionPassword}
+                    onChange={(e) => setEncryptionPassword(e.target.value)}
+                    placeholder="Enter your encryption password"
+                    className="rounded-none border-dashed"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        handleUnlock();
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </CardContent>
+          <CardFooter className="pt-6 border-t border-dashed mt-6 flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1 rounded-none border-dashed"
+              asChild
+            >
+              <Link href="/">$ cd /home</Link>
+            </Button>
+            <Button
+              onClick={handleUnlock}
+              disabled={isLoading}
+              className="flex-1 rounded-none border-dashed"
+            >
+              {isLoading ? "Unlocking..." : "Unlock Vault"}
+            </Button>
+          </CardFooter>
+        </Card>
       ) : (
         <div className="space-y-4">
           <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
@@ -502,12 +621,21 @@ export default function VaultPage() {
                   <Terminal className="h-5 w-5" />
                   <span className="text-sm font-mono">vault.sh</span>
                 </div>
-                <Button
-                  onClick={() => setShowAddForm(true)}
-                  className="rounded-none border-dashed"
-                >
-                  Add New Password
-                </Button>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    onClick={handleLockVault}
+                    variant="outline"
+                    className="rounded-none border-dashed"
+                  >
+                    Lock Vault
+                  </Button>
+                  <Button
+                    onClick={() => setShowAddForm(true)}
+                    className="rounded-none border-dashed"
+                  >
+                    Add New Password
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent className="pt-4">
@@ -690,6 +818,22 @@ export default function VaultPage() {
             <div ref={logsEndRef} />
           </div>
         </CardContent>
+        <CardFooter className="pt-6 border-t border-dashed mt-6 flex gap-2">
+          <Button
+            variant="outline"
+            className="flex-1 rounded-none border-dashed"
+            asChild
+          >
+            <Link href="/">$ cd /home</Link>
+          </Button>
+          <Button
+            variant="outline"
+            className="flex-1 rounded-none border-dashed"
+            asChild
+          >
+            <Link href="/">$ locked_vault</Link>
+          </Button>
+        </CardFooter>
       </Card>
     </div>
   );
