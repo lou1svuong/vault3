@@ -5,7 +5,7 @@ import { Tusky } from "@tusky-io/ts-sdk/web";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import {
   useCurrentAccount,
@@ -13,7 +13,6 @@ import {
   useCurrentWallet,
 } from "@mysten/dapp-kit";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import CustomConnectButton from "@/components/custom-connect-wallet/custom-connect-button";
 import {
   Dialog,
   DialogContent,
@@ -23,6 +22,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Terminal } from "lucide-react";
+import { PasswordCard } from "@/components/vault/password-card";
+import Header from "@/components/layouts/header";
 
 interface PasswordEntry {
   id: string;
@@ -31,6 +33,16 @@ interface PasswordEntry {
   password: string;
   url?: string;
   notes?: string;
+}
+
+function getDomain(url?: string) {
+  if (!url) return "";
+  try {
+    const withProtocol = url.match(/^https?:\/\//) ? url : `https://${url}`;
+    return new URL(withProtocol).hostname;
+  } catch {
+    return "";
+  }
 }
 
 export default function VaultPage() {
@@ -105,6 +117,9 @@ export default function VaultPage() {
   const handlePasswordSubmit = async () => {
     if (!currentTuskyInstance || !encryptionPassword) return;
 
+    setShowPasswordDialog(false);
+    setEncryptionPassword("");
+
     try {
       setIsLoading(true);
       addLog("Setting up encryption context...");
@@ -126,8 +141,6 @@ export default function VaultPage() {
       );
     } finally {
       setIsLoading(false);
-      setShowPasswordDialog(false);
-      setEncryptionPassword("");
       setCurrentTuskyInstance(null);
     }
   };
@@ -283,165 +296,197 @@ export default function VaultPage() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="text-center mb-4">
-        <h1 className="h4 mb-3">Vault³</h1>
-        <CustomConnectButton />
-      </div>
-
+    <div className="container mx-auto px-4 border border-dashed mt-4">
       {isLoading ? (
-        <div className="flex items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Loading vault...</span>
-        </div>
+        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-center space-x-2">
+              <Loader2 className="h-5 w-5 animate-spin" />
+              <span className="font-mono">Loading vault...</span>
+            </div>
+          </CardContent>
+        </Card>
       ) : error ? (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
+        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+          <CardHeader className="border-b border-dashed pb-4">
+            <div className="flex items-center space-x-2">
+              <Terminal className="h-5 w-5" />
+              <span className="text-sm font-mono">error.sh</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <Alert variant="destructive" className="font-mono">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
       ) : !tusky ? (
-        <div className="d-grid gap-2">
-          <Button onClick={handleSignInWithWallet} variant="default">
-            Sign in with Wallet
-          </Button>
-        </div>
+        <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+          <CardHeader className="border-b border-dashed pb-4">
+            <div className="flex items-center space-x-2">
+              <Terminal className="h-5 w-5" />
+              <span className="text-sm font-mono">vault.sh</span>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-muted-foreground">$</span>
+                <span>connect_wallet</span>
+              </div>
+              <div className="pl-6">
+                <Button
+                  onClick={handleSignInWithWallet}
+                  variant="outline"
+                  className="w-full rounded-none border-dashed"
+                >
+                  Sign in with Wallet
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       ) : (
-        <div>
-          <div className="mb-4">
-            <Button onClick={() => setShowAddForm(true)} variant="default">
-              Add New Password
-            </Button>
-          </div>
-
-          {showAddForm && (
-            <Card className="mb-4">
-              <CardHeader>
-                <CardTitle>Add New Password</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <Input
-                    placeholder="Title"
-                    value={newPassword.title || ""}
-                    onChange={(e) =>
-                      setNewPassword({ ...newPassword, title: e.target.value })
-                    }
-                  />
-                  <Input
-                    placeholder="Username"
-                    value={newPassword.username || ""}
-                    onChange={(e) =>
-                      setNewPassword({
-                        ...newPassword,
-                        username: e.target.value,
-                      })
-                    }
-                  />
-                  <Input
-                    type="password"
-                    placeholder="Password"
-                    value={newPassword.password || ""}
-                    onChange={(e) =>
-                      setNewPassword({
-                        ...newPassword,
-                        password: e.target.value,
-                      })
-                    }
-                  />
-                  <Input
-                    placeholder="URL (optional)"
-                    value={newPassword.url || ""}
-                    onChange={(e) =>
-                      setNewPassword({ ...newPassword, url: e.target.value })
-                    }
-                  />
-                  <Textarea
-                    placeholder="Notes (optional)"
-                    value={newPassword.notes || ""}
-                    onChange={(e) =>
-                      setNewPassword({ ...newPassword, notes: e.target.value })
-                    }
-                  />
-                  <div className="flex justify-end space-x-2">
-                    <Button
-                      onClick={() => setShowAddForm(false)}
-                      variant="outline"
-                    >
-                      Cancel
-                    </Button>
-                    <Button onClick={savePassword} disabled={isLoading}>
-                      {isLoading ? "Saving..." : "Save"}
-                    </Button>
+        <div className="space-y-4">
+          <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
+            <CardHeader className="border-b border-dashed flex items-center">
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center space-x-2">
+                  <Terminal className="h-5 w-5" />
+                  <span className="text-sm font-mono">vault.sh</span>
+                </div>
+                <Button
+                  onClick={() => setShowAddForm(true)}
+                  className="rounded-none border-dashed"
+                >
+                  Add New Password
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {showAddForm && (
+                <div className="space-y-4 mb-6">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-muted-foreground">$</span>
+                    <span>add_password</span>
+                  </div>
+                  <div className="pl-6 space-y-4">
+                    <Input
+                      placeholder="Title"
+                      value={newPassword.title || ""}
+                      onChange={(e) =>
+                        setNewPassword({
+                          ...newPassword,
+                          title: e.target.value,
+                        })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <Input
+                      placeholder="Username"
+                      value={newPassword.username || ""}
+                      onChange={(e) =>
+                        setNewPassword({
+                          ...newPassword,
+                          username: e.target.value,
+                        })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <Input
+                      type="password"
+                      placeholder="Password"
+                      value={newPassword.password || ""}
+                      onChange={(e) =>
+                        setNewPassword({
+                          ...newPassword,
+                          password: e.target.value,
+                        })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <Input
+                      placeholder="URL (optional)"
+                      value={newPassword.url || ""}
+                      onChange={(e) =>
+                        setNewPassword({ ...newPassword, url: e.target.value })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <Textarea
+                      placeholder="Notes (optional)"
+                      value={newPassword.notes || ""}
+                      onChange={(e) =>
+                        setNewPassword({
+                          ...newPassword,
+                          notes: e.target.value,
+                        })
+                      }
+                      className="rounded-none border-dashed"
+                    />
+                    <div className="flex justify-end space-x-2">
+                      <Button
+                        onClick={() => setShowAddForm(false)}
+                        variant="outline"
+                        className="rounded-none border-dashed"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={savePassword}
+                        disabled={isLoading}
+                        className="rounded-none border-dashed"
+                      >
+                        {isLoading ? "Saving..." : "Save"}
+                      </Button>
+                    </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {passwords.map((entry) => (
-              <Card key={entry.id}>
-                <CardHeader>
-                  <CardTitle>{entry.title}</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2">
-                    <p className="text-sm text-muted-foreground">
-                      Username: {entry.username}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Password: ••••••••
-                    </p>
-                    {entry.url && (
-                      <p className="text-sm text-muted-foreground">
-                        URL:{" "}
-                        <a
-                          href={entry.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline"
-                        >
-                          {entry.url}
-                        </a>
-                      </p>
-                    )}
-                    {entry.notes && (
-                      <p className="text-sm text-muted-foreground">
-                        Notes: {entry.notes}
-                      </p>
-                    )}
-                    <Button
-                      onClick={() => deletePassword(entry.id)}
-                      variant="destructive"
-                      size="sm"
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+              <div className="space-y-6">
+                {passwords.map((entry) => (
+                  <PasswordCard
+                    key={entry.id}
+                    title={entry.title}
+                    domain={getDomain(entry.url)}
+                    username={entry.username}
+                    password={entry.password}
+                    notes={entry.notes}
+                    // updatedAt={entry.updatedAt}
+                    // onEdit={() => handleEdit(entry.id)}
+                    onDelete={() => deletePassword(entry.id)}
+                  />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       )}
 
       <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-        <DialogContent>
+        <DialogContent className="border-dashed rounded-none">
           <DialogHeader>
-            <DialogTitle>Set Encryption Password</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="font-mono">
+              Set Encryption Password
+            </DialogTitle>
+            <DialogDescription className="font-mono">
               Please enter a password to encrypt your vault. This password will
               be required to access your vault in the future.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="font-mono">
+                Password
+              </Label>
               <Input
                 id="password"
                 type="password"
                 value={encryptionPassword}
                 onChange={(e) => setEncryptionPassword(e.target.value)}
                 placeholder="Enter your encryption password"
+                className="rounded-none border-dashed"
               />
             </div>
           </div>
@@ -449,12 +494,14 @@ export default function VaultPage() {
             <Button
               variant="outline"
               onClick={() => setShowPasswordDialog(false)}
+              className="rounded-none border-dashed"
             >
               Cancel
             </Button>
             <Button
               onClick={handlePasswordSubmit}
               disabled={!encryptionPassword}
+              className="rounded-none border-dashed"
             >
               Continue
             </Button>
@@ -462,25 +509,31 @@ export default function VaultPage() {
         </DialogContent>
       </Dialog>
 
-      <Card className="mt-4">
-        <CardHeader>
-          <CardTitle>SDK Method Calls</CardTitle>
+      <Card className="w-full border-dashed border rounded-none shadow-none mt-4">
+        <CardHeader className="border-b border-dashed pb-4">
+          <div className="flex items-center space-x-2">
+            <Terminal className="h-5 w-5" />
+            <span className="text-sm font-mono">sdk_logs.sh</span>
+          </div>
         </CardHeader>
         <CardContent>
-          <div
-            className="logs-container"
-            style={{ maxHeight: "200px", overflowY: "auto" }}
-          >
-            {logs.map((log, index) => (
-              <div
-                key={index}
-                className={`log-entry small ${
-                  log.startsWith("  →") ? "text-primary" : "text-muted"
-                }`}
-              >
-                {log}
-              </div>
-            ))}
+          <div className="bg-gray-900 rounded-lg p-4 max-h-64 overflow-y-auto font-mono text-sm">
+            {logs.length === 0 ? (
+              <p className="text-gray-400">No activity yet...</p>
+            ) : (
+              logs.map((log, index) => (
+                <div
+                  key={index}
+                  className={`${
+                    log.startsWith("  →")
+                      ? "text-green-400 ml-4"
+                      : "text-gray-300"
+                  }`}
+                >
+                  {log}
+                </div>
+              ))
+            )}
             <div ref={logsEndRef} />
           </div>
         </CardContent>
