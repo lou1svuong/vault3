@@ -3,34 +3,20 @@
 import { useState, useRef, useEffect } from "react";
 import { Tusky } from "@tusky-io/ts-sdk/web";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
-import { Loader2 } from "lucide-react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Loader2, Terminal } from "lucide-react";
 import {
   useCurrentAccount,
   useSignPersonalMessage,
   useCurrentWallet,
 } from "@mysten/dapp-kit";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
-import { Terminal, Lock } from "lucide-react";
 import { PasswordCard } from "@/components/vault/password-card";
 import { toast } from "sonner";
-import Link from "next/link";
+import { VaultHeader } from "@/components/vault/vault-header";
+import { PasswordForm } from "@/components/vault/password-form";
+import { VaultLogger } from "@/components/vault/vault-logger";
+import { PasswordDialog } from "@/components/vault/password-dialog";
 
 interface PasswordEntry {
   id: string;
@@ -168,8 +154,7 @@ export default function VaultPage() {
   };
 
   const handleEncryptionContext = async (tuskyInstance: Tusky) => {
-    const passwordToUse = encryptionPassword;
-    if (!passwordToUse) {
+    if (!encryptionPassword) {
       throw new Error("Password is required.");
     }
     addLog(
@@ -177,7 +162,7 @@ export default function VaultPage() {
       'tusky.addEncrypter({ password: "***", keystore: true })'
     );
     await tuskyInstance.addEncrypter({
-      password: passwordToUse,
+      password: encryptionPassword,
       keystore: true,
     });
   };
@@ -282,6 +267,10 @@ export default function VaultPage() {
     setEditingPassword(null);
     setNewPassword({});
     setShowAddForm(false);
+  };
+
+  const handlePasswordChange = (field: keyof PasswordEntry, value: string) => {
+    setNewPassword((prev) => ({ ...prev, [field]: value }));
   };
 
   const savePassword = async () => {
@@ -501,115 +490,21 @@ export default function VaultPage() {
         </Card>
       ) : (
         <div className="space-y-4">
+          <VaultHeader
+            onSignOut={handleSignOut}
+            onAddNew={() => setShowAddForm(true)}
+          />
           <Card className="w-full border-dashed border mt-4 rounded-none shadow-none">
-            <CardHeader className="border-b border-dashed flex items-center">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center space-x-2">
-                  <Terminal className="h-5 w-5" />
-                  <span className="text-sm font-mono">vault.sh</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    onClick={handleSignOut}
-                    variant="outline"
-                    className="rounded-none border-dashed"
-                  >
-                    Sign Out
-                  </Button>
-                  <Button
-                    onClick={() => setShowAddForm(true)}
-                    className="rounded-none border-dashed"
-                  >
-                    Add New Password
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
             <CardContent className="pt-4">
               {showAddForm && (
-                <div className="space-y-4 mb-6">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-muted-foreground">$</span>
-                    <span>
-                      {editingPassword ? "edit_password" : "add_password"}
-                    </span>
-                  </div>
-                  <div className="pl-6 space-y-4">
-                    <Input
-                      placeholder="Title"
-                      value={newPassword.title || ""}
-                      onChange={(e) =>
-                        setNewPassword({
-                          ...newPassword,
-                          title: e.target.value,
-                        })
-                      }
-                      className="rounded-none border-dashed"
-                    />
-                    <Input
-                      placeholder="Username"
-                      value={newPassword.username || ""}
-                      onChange={(e) =>
-                        setNewPassword({
-                          ...newPassword,
-                          username: e.target.value,
-                        })
-                      }
-                      className="rounded-none border-dashed"
-                    />
-                    <Input
-                      type="password"
-                      placeholder="Password"
-                      value={newPassword.password || ""}
-                      onChange={(e) =>
-                        setNewPassword({
-                          ...newPassword,
-                          password: e.target.value,
-                        })
-                      }
-                      className="rounded-none border-dashed"
-                    />
-                    <Input
-                      placeholder="URL (optional)"
-                      value={newPassword.url || ""}
-                      onChange={(e) =>
-                        setNewPassword({ ...newPassword, url: e.target.value })
-                      }
-                      className="rounded-none border-dashed"
-                    />
-                    <Textarea
-                      placeholder="Notes (optional)"
-                      value={newPassword.notes || ""}
-                      onChange={(e) =>
-                        setNewPassword({
-                          ...newPassword,
-                          notes: e.target.value,
-                        })
-                      }
-                      className="rounded-none border-dashed"
-                    />
-                    <div className="flex justify-end space-x-2">
-                      <Button
-                        onClick={handleCancelEdit}
-                        variant="outline"
-                        className="rounded-none border-dashed"
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        onClick={savePassword}
-                        disabled={isLoading}
-                        className="rounded-none border-dashed"
-                      >
-                        {isLoading
-                          ? "Saving..."
-                          : editingPassword
-                          ? "Update"
-                          : "Save"}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                <PasswordForm
+                  password={newPassword}
+                  isLoading={isLoading}
+                  isEditing={!!editingPassword}
+                  onChange={handlePasswordChange}
+                  onSave={savePassword}
+                  onCancel={handleCancelEdit}
+                />
               )}
 
               <div className="space-y-6">
@@ -650,89 +545,15 @@ export default function VaultPage() {
         </div>
       )}
 
-      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
-        <DialogContent className="border-dashed rounded-none">
-          <DialogHeader>
-            <DialogTitle className="font-mono">
-              Set Encryption Password
-            </DialogTitle>
-            <DialogDescription className="font-mono">
-              Please enter a password to encrypt your vault. This password will
-              be required to access your vault in the future.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="password" className="font-mono">
-                Password
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={encryptionPassword}
-                onChange={(e) => setEncryptionPassword(e.target.value)}
-                placeholder="Enter your encryption password"
-                className="rounded-none border-dashed"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowPasswordDialog(false)}
-              className="rounded-none border-dashed"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handlePasswordSubmit}
-              disabled={!encryptionPassword}
-              className="rounded-none border-dashed"
-            >
-              Continue
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <PasswordDialog
+        open={showPasswordDialog}
+        onOpenChange={setShowPasswordDialog}
+        password={encryptionPassword}
+        onPasswordChange={setEncryptionPassword}
+        onSubmit={handlePasswordSubmit}
+      />
 
-      <Card className="w-full border-dashed border rounded-none shadow-none mt-4">
-        <CardHeader className="border-b border-dashed pb-4">
-          <div className="flex items-center space-x-2">
-            <Terminal className="h-5 w-5" />
-            <span className="text-sm font-mono">Vault³_log.sh</span>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="bg-gray-900 rounded-lg p-4 max-h-64 overflow-y-auto font-mono text-sm">
-            {logs.length === 0 ? (
-              <p className="text-gray-400">No activity yet...</p>
-            ) : (
-              logs.map((log, index) => (
-                <div
-                  key={index}
-                  className={`${
-                    log.startsWith("  →")
-                      ? "text-green-400 ml-4"
-                      : "text-gray-300"
-                  }`}
-                >
-                  {log}
-                </div>
-              ))
-            )}
-            <div ref={logsEndRef} />
-          </div>
-        </CardContent>
-        <CardFooter className="pt-6 border-t border-dashed mt-6 flex gap-2">
-          <Button
-            variant="outline"
-            className="flex-1 rounded-none border-dashed"
-            asChild
-          >
-            <Link href="/">$ cd /home</Link>
-          </Button>
-        </CardFooter>
-      </Card>
+      <VaultLogger logs={logs} logsEndRef={logsEndRef} />
     </div>
   );
 }
