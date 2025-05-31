@@ -3,11 +3,11 @@ import Link from "next/link";
 import ThemeToggler from "../theme/toggler";
 import { Button } from "../ui/button";
 import { ArrowUpRight } from "lucide-react";
-import { ConnectButton } from "../custom-connect-wallet/connect-button";
-import { useWallet } from "@suiet/wallet-kit";
+import { useCurrentAccount } from "@mysten/dapp-kit";
+import CustomConnectButton from "@/components/custom-connect-wallet/custom-connect-button";
 
 export default function Header() {
-  const { connected } = useWallet();
+  const account = useCurrentAccount();
 
   return (
     <div
@@ -54,7 +54,7 @@ export default function Header() {
         );
       })}
 
-      {connected ? (
+      {account ? (
         <Button
           className="h-full border-dashed"
           size="lg"
@@ -70,7 +70,7 @@ export default function Header() {
           </Link>
         </Button>
       ) : null}
-      <ConnectButton className="h-full border-dashed" />
+      <CustomConnectButton />
       <ThemeToggler className="border-dashed size-10 md:size-14" />
     </div>
   );

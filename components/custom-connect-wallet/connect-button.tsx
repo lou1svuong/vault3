@@ -9,7 +9,7 @@ import { PlugZap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
-export function ConnectButton({ className }: { className?: string }) {
+export function CustomConnectButton({ className }: { className?: string }) {
   const { connected, disconnect } = useWallet();
   const [isModalOpen, setIsModalOpen] = useState(false);
 

@@ -3,14 +3,14 @@
 import Header from "@/components/layouts/header";
 import { Button } from "@/components/ui/button";
 import { siteConfig } from "@/config/site.config";
-import { ArrowRight, Shield, Lock, Key } from "lucide-react";
+import { Shield, Lock, Key } from "lucide-react";
 import Link from "next/link";
 import Spline from "@splinetool/react-spline";
-import { ConnectButton } from "@/components/custom-connect-wallet/connect-button";
-import { useWallet } from "@suiet/wallet-kit";
+import { useCurrentAccount } from "@mysten/dapp-kit";
+import CustomConnectButton from "@/components/custom-connect-wallet/custom-connect-button";
 
 export default function Hero() {
-  const { connected } = useWallet();
+  const account = useCurrentAccount();
 
   return (
     <section className="w-full flex divide-x">
@@ -48,8 +48,10 @@ export default function Hero() {
             {siteConfig.description}
           </p>
           <div id="cta" className="flex items-center gap-4 pt-4">
-            {!connected ? (
-              <ConnectButton className="bg-primary text-primary-foreground " />
+            {!account ? (
+              <>
+                <CustomConnectButton />
+              </>
             ) : (
               <Button asChild>
                 <Link href="/vault" className="gap-2">
