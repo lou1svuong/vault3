@@ -8,7 +8,7 @@ export const siteConfig: SiteConfig = {
   title: "Vault³ - Decentralized Password Manager",
   description:
     "A web3-native, fully decentralized password manager that puts security and privacy in your hands. Using Sui wallet keys for authentication and Seal SDK for client-side encryption, Vault³ eliminates the need for master passwords or centralized servers. Your encrypted vault is stored on Walrus/IPFS, with optional on-chain CID anchoring via Sui smart contract.",
-  origin: "https://vault3.xyz",
+  origin: "https://vault3-theta.vercel.app",
   keywords: [
     "Vault³",
     "Decentralized Password Manager",
@@ -28,10 +28,10 @@ export const siteConfig: SiteConfig = {
     "Crypto Security",
     "Web3 Privacy",
   ],
-  og: "https://vault3.xyz/og.png",
+  og: "https://vault3-theta.vercel.app/og.png",
   creator: {
     name: "Vault³ Team",
-    url: "https://vault3.xyz",
+    url: "https://vault3-theta.vercel.app",
   },
   socials: {
     // email: {
@@ -43,15 +43,15 @@ export const siteConfig: SiteConfig = {
     //   icon: Linkedin,
     // },
     github: {
-      href: "https://github.com/vault3",
+      href: "https://github.com/lou1svuong/vault3",
       icon: Github,
     },
     x: {
-      href: "https://x.com/vault3",
+      href: "https://x.com/lou1sgudboiz",
       icon: X,
     },
     telegram: {
-      href: "https://t.me/vault3",
+      href: "https://t.me/lou1sgudboiz",
       icon: Telegram,
     },
   },
