@@ -2,12 +2,11 @@
 
 import Header from "@/components/layouts/header";
 import { Button } from "@/components/ui/button";
-import { siteConfig } from "@/config/site.config";
-import { Shield, Lock, Key } from "lucide-react";
 import Link from "next/link";
 import Spline from "@splinetool/react-spline";
 import { useCurrentAccount } from "@mysten/dapp-kit";
 import CustomConnectButton from "@/components/custom-connect-wallet/custom-connect-button";
+import { HyperText } from "@/components/ui/hyper-text";
 
 export default function Hero() {
   const account = useCurrentAccount();
@@ -24,34 +23,15 @@ export default function Hero() {
             <Spline scene="https://prod.spline.design/tYqLLCrJ14AFx6MC/scene.splinecode" />
             <div className="absolute inset-0 opacity-20 mix-blend-multiply z-0"></div>
           </div>
-          <h1 className="head-text-md">
+          <HyperText className="head-text-md max-w-3xl">
             Vault³ - Your Decentralized Password Manager
-          </h1>
+          </HyperText>
           <p className="text-muted-foreground max-w-3xl border-l-4 border-foreground pl-2">
             Own your secrets. Not even we can see them.
           </p>
-          <div className="flex items-center gap-4 text-muted-foreground max-w-3xl pt-2">
-            <div className="flex items-center gap-2">
-              <Shield className="size-4" />
-              <span>Client-side Encryption</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Lock className="size-4" />
-              <span>Zero Knowledge</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <Key className="size-4" />
-              <span>Sui Wallet Authentication</span>
-            </div>
-          </div>
-          <p className="text-muted-foreground max-w-3xl pt-4">
-            {siteConfig.description}
-          </p>
-          <div id="cta" className="flex items-center gap-4 pt-4">
+          <div id="cta" className="flex items-center gap-4 pt-8">
             {!account ? (
-              <>
-                <CustomConnectButton />
-              </>
+              <CustomConnectButton />
             ) : (
               <Button asChild>
                 <Link href="/vault" className="gap-2">

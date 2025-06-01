@@ -23,7 +23,7 @@ export default function FAQs() {
       icon: "wallet",
       question: "How does Vault³ authentication work?",
       answer:
-        "Vault³ uses your Sui wallet as the sole method of authentication. There's no need for master passwords or email addresses. Simply connect your Sui wallet (like Sui Wallet or Surf) to access your vault securely.",
+        "Vault³ uses a two-layer security approach: your Sui wallet for authentication and a master key for data decryption. This provides both secure access and data protection. Your Sui wallet (like Sui Wallet or Surf) handles authentication, while the master key ensures your vault data remains encrypted and secure.",
     },
     {
       id: "item-2",
@@ -49,9 +49,9 @@ export default function FAQs() {
     {
       id: "item-5",
       icon: "key",
-      question: "What happens if I lose my wallet?",
+      question: "What happens if I lose my wallet or master key?",
       answer:
-        "Since Vault³ uses your Sui wallet for authentication, it's crucial to keep your wallet keys secure. We recommend using hardware wallets with Sui for enhanced key security. In the future, we plan to add social recovery integration for wallet keys.",
+        "Both your Sui wallet and master key are crucial for accessing your vault. The Sui wallet handles authentication, while the master key is needed for data decryption. We recommend using hardware wallets with Sui for enhanced key security and keeping your master key safe. In the future, we plan to add social recovery integration for wallet keys.",
     },
   ];
 
