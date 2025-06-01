@@ -15,18 +15,18 @@ const defaultNavigationLinks = [
 
 const defaultSocialLinks = [
   {
-    href: "https://x.com",
+    href: "https://x.com/lou1sgudboiz",
     icon: <X />,
   },
 
   {
-    href: "https://github.com/",
+    href: "https://github.com/lou1svuong/vault3",
     icon: <Github />,
   },
 ];
 
 const Footer = ({
-  brandName = "CommandOSS",
+  brandName = "Vault³",
   navigationLinks = defaultNavigationLinks,
   socialLinks = defaultSocialLinks,
 }) => {
