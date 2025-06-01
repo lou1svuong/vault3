@@ -109,7 +109,7 @@ const featureConfig = [
     category: "Authentication",
     name: "Wallet-Based Login",
     description:
-      "No master password or email required. Your Sui wallet is your key.",
+      "Sui wallet for authentication with master key for data decryption. Secure and convenient access to your vault.",
     link: "#",
   },
   {
