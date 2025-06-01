@@ -702,6 +702,12 @@ export default function VaultPage() {
             <Alert variant="destructive" className="font-mono">
               <AlertDescription>{error}</AlertDescription>
             </Alert>
+            <Button
+              onClick={() => window.location.reload()}
+              className="w-full rounded-none border-dashed"
+            >
+              Try Again
+            </Button>
           </CardContent>
         </Card>
       ) : !tusky ? (
