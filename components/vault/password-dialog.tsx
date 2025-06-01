@@ -9,6 +9,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Alert, AlertDescription } from "../ui/alert";
+import { AlertCircle } from "lucide-react";
 
 interface PasswordDialogProps {
   open: boolean;
@@ -32,10 +34,18 @@ export function PasswordDialog({
           <DialogTitle className="font-mono">
             Set Encryption Password
           </DialogTitle>
-          <DialogDescription className="font-mono">
-            Please enter a password to encrypt your vault. This password will be
-            required to access your vault in the future.
-          </DialogDescription>
+          <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-500">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <span className="font-medium">
+                Important: Remember your master password!
+              </span>
+              <span className="text-sm mt-1">
+                This password is required to access your vault and change your
+                master key. There is no way to recover it if you forget it.
+              </span>
+            </AlertDescription>
+          </Alert>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">

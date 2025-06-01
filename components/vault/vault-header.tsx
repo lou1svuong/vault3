@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, Plus, Terminal } from "lucide-react";
+import { ChevronLeft, Plus, Terminal, Key, RefreshCw } from "lucide-react";
 import ThemeToggler from "../theme/toggler";
 
 interface VaultWithMembers {
@@ -12,6 +12,8 @@ interface VaultWithMembers {
 interface VaultHeaderProps {
   onSignOut: () => void;
   onAddNew: () => void;
+  onBackup: () => void;
+  onResetPassword: () => void;
   vaults: VaultWithMembers[];
   selectedVaultId: string | null;
   onVaultSelect: (vaultId: string) => void;
@@ -22,6 +24,8 @@ interface VaultHeaderProps {
 export function VaultHeader({
   onSignOut,
   onAddNew,
+  onBackup,
+  onResetPassword,
   selectedVaultId,
   onVaultSelect,
   showBackButton,
@@ -40,6 +44,22 @@ export function VaultHeader({
         )}
       </div>
       <div className="flex items-center space-x-2">
+        <Button
+          onClick={onBackup}
+          variant="outline"
+          className="rounded-none border-dashed"
+        >
+          <Key className="h-4 w-4 mr-2" />
+          Backup Master Key
+        </Button>
+        <Button
+          onClick={onResetPassword}
+          variant="outline"
+          className="rounded-none border-dashed"
+        >
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Reset Password
+        </Button>
         <Button
           onClick={onAddNew}
           variant="outline"

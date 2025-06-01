@@ -1,10 +1,18 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Tusky, Vault } from "@tusky-io/ts-sdk/web";
+import { Tusky, Vault, X25519KeyPair } from "@tusky-io/ts-sdk/web";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Loader2, Terminal, Users, Lock, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  Terminal,
+  Users,
+  Lock,
+  Trash2,
+  AlertCircle,
+  Copy,
+} from "lucide-react";
 import {
   useCurrentAccount,
   useSignPersonalMessage,
@@ -22,6 +30,19 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { DeleteVaultDialog } from "@/components/vault/delete-vault-dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 interface PasswordEntry {
   id: string;
@@ -37,6 +58,14 @@ interface VaultWithMembers {
   name: string;
   isOwner: boolean;
   members: string[];
+}
+
+interface BackupState {
+  backupPhrase: string | null;
+  isGenerating: boolean;
+  isResetting: boolean;
+  newPassword: string;
+  confirmPassword: string;
 }
 
 function getDomain(url?: string) {
@@ -80,6 +109,15 @@ export default function VaultPage() {
   const [vaultToDelete, setVaultToDelete] = useState<VaultWithMembers | null>(
     null
   );
+  const [backupState, setBackupState] = useState<BackupState>({
+    backupPhrase: null,
+    isGenerating: false,
+    isResetting: false,
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [showBackupDialog, setShowBackupDialog] = useState(false);
+  const [showResetDialog, setShowResetDialog] = useState(false);
 
   const { mutate: signPersonalMessage } = useSignPersonalMessage();
   const account = useCurrentAccount();
@@ -519,6 +557,128 @@ export default function VaultPage() {
     }
   };
 
+  const handleGenerateBackup = async () => {
+    if (!tusky) {
+      toast.error("Please sign in first");
+      return;
+    }
+
+    if (!encryptionPassword) {
+      toast.error("Please enter your master password first");
+      return;
+    }
+
+    try {
+      setBackupState((prev) => ({ ...prev, isGenerating: true }));
+      addLog("Generating backup phrase...", "tusky.me.backupPassword()");
+
+      // First ensure we have the correct encryption context
+      await handleEncryptionContext(tusky);
+
+      // Then generate the backup phrase
+      const { backupPhrase } = await tusky.me.backupPassword(
+        encryptionPassword
+      );
+
+      if (!backupPhrase) {
+        throw new Error("Failed to generate backup phrase");
+      }
+
+      setBackupState((prev) => ({ ...prev, backupPhrase }));
+      addLog("Backup phrase generated successfully");
+      toast.success("Backup phrase generated successfully");
+    } catch (err) {
+      console.error("Backup generation error:", err);
+      toast.error(
+        err instanceof Error ? err.message : "Failed to generate backup phrase"
+      );
+      setError(
+        err instanceof Error ? err.message : "Failed to generate backup phrase"
+      );
+    } finally {
+      setBackupState((prev) => ({ ...prev, isGenerating: false }));
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (
+      !tusky ||
+      !backupState.backupPhrase ||
+      !backupState.newPassword ||
+      !backupState.confirmPassword
+    )
+      return;
+
+    if (backupState.newPassword !== backupState.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    try {
+      setBackupState((prev) => ({ ...prev, isResetting: true }));
+      addLog("Resetting password with backup phrase...");
+      await tusky.me.resetPassword(
+        backupState.backupPhrase,
+        backupState.newPassword
+      );
+      addLog("Password reset successfully");
+      toast.success("Password reset successfully");
+      setShowResetDialog(false);
+      setBackupState((prev) => ({
+        ...prev,
+        backupPhrase: null,
+        newPassword: "",
+        confirmPassword: "",
+      }));
+    } catch (err) {
+      console.error("Password reset error:", err);
+      toast.error("Failed to reset password");
+      setError(err instanceof Error ? err.message : "Failed to reset password");
+    } finally {
+      setBackupState((prev) => ({ ...prev, isResetting: false }));
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (
+      !tusky ||
+      !encryptionPassword ||
+      !backupState.newPassword ||
+      !backupState.confirmPassword
+    )
+      return;
+
+    if (backupState.newPassword !== backupState.confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+
+    try {
+      setBackupState((prev) => ({ ...prev, isResetting: true }));
+      addLog("Changing password...");
+      await tusky.me.changePassword(
+        encryptionPassword,
+        backupState.newPassword
+      );
+      addLog("Password changed successfully");
+      toast.success("Password changed successfully");
+      setShowResetDialog(false);
+      setBackupState((prev) => ({
+        ...prev,
+        newPassword: "",
+        confirmPassword: "",
+      }));
+    } catch (err) {
+      console.error("Password change error:", err);
+      toast.error("Failed to change password");
+      setError(
+        err instanceof Error ? err.message : "Failed to change password"
+      );
+    } finally {
+      setBackupState((prev) => ({ ...prev, isResetting: false }));
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl border border-dashed">
       {isLoading ? (
@@ -579,6 +739,8 @@ export default function VaultPage() {
                 ? () => setShowAddForm(true)
                 : () => setShowVaultDialog(true)
             }
+            onBackup={() => setShowBackupDialog(true)}
+            onResetPassword={() => setShowResetDialog(true)}
             vaults={vaults}
             selectedVaultId={selectedVaultId}
             onVaultSelect={handleVaultSelect}
@@ -759,6 +921,172 @@ export default function VaultPage() {
         isLoading={!!deletingVaultId}
         vaultName={vaultToDelete?.name || ""}
       />
+
+      <AlertDialog open={showBackupDialog} onOpenChange={setShowBackupDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Backup Master Password</AlertDialogTitle>
+            <AlertDialogDescription>
+              Generate a backup phrase to recover your master password if you
+              forget it. Keep this phrase secure - anyone with access to it can
+              reset your master password.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {backupState.backupPhrase ? (
+            <div className="space-y-4">
+              <div className="relative bg-muted/50 rounded-xl border p-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      backupState.backupPhrase as string
+                    );
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+
+                <p className="font-mono text-sm leading-relaxed break-words pr-10">
+                  {backupState.backupPhrase}
+                </p>
+              </div>
+
+              <p className="text-sm text-muted-foreground">
+                Write down this backup phrase and store it securely. You won't
+                be able to see it again.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="currentPassword">Current Master Password</Label>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  value={encryptionPassword}
+                  onChange={(e) => setEncryptionPassword(e.target.value)}
+                  placeholder="Enter your current master password"
+                />
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Enter your current master password to generate a backup phrase.
+              </p>
+              <Button
+                onClick={handleGenerateBackup}
+                disabled={backupState.isGenerating || !encryptionPassword}
+                className="w-full"
+              >
+                {backupState.isGenerating ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating...
+                  </>
+                ) : (
+                  "Generate Backup Phrase"
+                )}
+              </Button>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              onClick={() => {
+                setBackupState((prev) => ({ ...prev, backupPhrase: null }));
+                setEncryptionPassword("");
+              }}
+            >
+              Close
+            </AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset Master Password</AlertDialogTitle>
+            <AlertDialogDescription>
+              Enter your backup phrase and new password to reset your master
+              password.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="backupPhrase">Backup Phrase</Label>
+              <Input
+                id="backupPhrase"
+                value={backupState.backupPhrase || ""}
+                onChange={(e) =>
+                  setBackupState((prev) => ({
+                    ...prev,
+                    backupPhrase: e.target.value,
+                  }))
+                }
+                placeholder="Enter your 24-word backup phrase"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">New Password</Label>
+              <Input
+                id="newPassword"
+                type="password"
+                value={backupState.newPassword}
+                onChange={(e) =>
+                  setBackupState((prev) => ({
+                    ...prev,
+                    newPassword: e.target.value,
+                  }))
+                }
+                placeholder="Enter new password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                value={backupState.confirmPassword}
+                onChange={(e) =>
+                  setBackupState((prev) => ({
+                    ...prev,
+                    confirmPassword: e.target.value,
+                  }))
+                }
+                placeholder="Confirm new password"
+              />
+            </div>
+          </div>
+          <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-500">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <span className="font-medium">
+                Important: Remember your master password!
+              </span>
+              <span className="text-sm mt-1">
+                This password is required to access your vault and change your
+                master key. There is no way to recover it if you forget it.
+              </span>
+            </AlertDescription>
+          </Alert>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleResetPassword}
+              disabled={backupState.isResetting}
+            >
+              {backupState.isResetting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Resetting...
+                </>
+              ) : (
+                "Reset Password"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <VaultLogger logs={logs} logsEndRef={logsEndRef} />
     </div>
