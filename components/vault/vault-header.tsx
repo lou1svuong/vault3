@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, Plus, Terminal } from "lucide-react";
+import ThemeToggler from "../theme/toggler";
 
 interface VaultWithMembers {
   id: string;
@@ -32,8 +33,7 @@ export function VaultHeader({
         {showBackButton && onBack && (
           <Button
             onClick={onBack}
-            variant="outline"
-            className="rounded-none flex items-center space-x-2 shadow-none"
+            className="rounded-none flex items-center space-x-2"
           >
             <span className="text-sm font-mono">$ cd vault.sh</span>
           </Button>
@@ -55,6 +55,10 @@ export function VaultHeader({
         >
           Sign Out
         </Button>
+        <ThemeToggler
+          size="icon"
+          className="rounded-none border size-9 border-dashed"
+        />
       </div>
     </div>
   );

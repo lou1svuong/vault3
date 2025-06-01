@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils";
 
 type ThemeTogglerProps = {
   className?: string;
+  size?: "sm" | "lg" | "icon" | "default";
 };
 
-export default function ThemeToggler({ className }: ThemeTogglerProps) {
+export default function ThemeToggler({ className, size }: ThemeTogglerProps) {
   const { theme, setTheme } = useTheme();
   const [systemTheme, setSystemTheme] = useState<"light" | "dark">("light");
 
@@ -52,6 +53,7 @@ export default function ThemeToggler({ className }: ThemeTogglerProps) {
     <Button
       onClick={toggleTheme}
       variant="ghost"
+      size={size}
       className={cn("size-14 aspect-square p-0 cursor-pointer", className)}
     >
       <SunIcon className="size-4 md:size-5 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
