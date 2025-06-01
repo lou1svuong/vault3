@@ -4,7 +4,15 @@ import { useState, useRef, useEffect } from "react";
 import { Tusky, Vault, X25519KeyPair } from "@tusky-io/ts-sdk/web";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
-import { Loader2, Terminal, Users, Lock, Trash2 } from "lucide-react";
+import {
+  Loader2,
+  Terminal,
+  Users,
+  Lock,
+  Trash2,
+  AlertCircle,
+  Copy,
+} from "lucide-react";
 import {
   useCurrentAccount,
   useSignPersonalMessage,
@@ -926,11 +934,25 @@ export default function VaultPage() {
           </AlertDialogHeader>
           {backupState.backupPhrase ? (
             <div className="space-y-4">
-              <div className="p-4 bg-muted rounded-lg">
-                <p className="font-mono text-sm break-all">
+              <div className="relative bg-muted/50 rounded-xl border p-4">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute top-2 right-2 text-muted-foreground hover:text-foreground"
+                  onClick={() => {
+                    navigator.clipboard.writeText(
+                      backupState.backupPhrase as string
+                    );
+                  }}
+                >
+                  <Copy className="h-4 w-4" />
+                </Button>
+
+                <p className="font-mono text-sm leading-relaxed break-words pr-10">
                   {backupState.backupPhrase}
                 </p>
               </div>
+
               <p className="text-sm text-muted-foreground">
                 Write down this backup phrase and store it securely. You won't
                 be able to see it again.
@@ -1035,6 +1057,18 @@ export default function VaultPage() {
               />
             </div>
           </div>
+          <Alert className="bg-yellow-500/10 border-yellow-500/20 text-yellow-500">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              <span className="font-medium">
+                Important: Remember your master password!
+              </span>
+              <span className="text-sm mt-1">
+                This password is required to access your vault and change your
+                master key. There is no way to recover it if you forget it.
+              </span>
+            </AlertDescription>
+          </Alert>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
